@@ -4,7 +4,7 @@ This is another form based on https://github.com/deividAlfa/UGUI with modificati
 3. Limited modification: The ".is_old_font" code still works,but font array need to update to new structure.
 4. New C structure font array.
 5. Ensure that the str pointer is correctly updated in the _UG_DecodeUTF8 function. This typically involves appropriately incrementing the pointer after identifying the number of bytes in the character.
-6. Chinese Font is converted from Source Han Sans CN
+6. Chinese Font is converted from Source Han Sans CN(Tool:https://github.com/agugu2000/ttf2ugui)
 7. Simulation works normal for CJK characters
 <img src="./ugui.png" width="600">
 
