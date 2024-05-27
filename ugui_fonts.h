@@ -11,6 +11,14 @@
   https://en.wikipedia.org/wiki/Code_page_850
 */
 
+#ifdef UGUI_USE_FONT_SourceHanSansCN_Medium_13X16
+extern const  UG_FONT FONT_SourceHanSansCN_Medium_13X16[];
+#endif
+
+#ifdef UGUI_USE_FONT_8X8
+extern const  UG_FONT FONT_8X8[];
+#endif
+/*
 #ifdef UGUI_USE_FONT_4X16
 extern UG_FONT FONT_4X6[];
 #endif
@@ -35,9 +43,7 @@ extern UG_FONT FONT_6X10[];
 extern UG_FONT FONT_7X12[];
 #endif
 
-#ifdef UGUI_USE_FONT_8X8
-extern UG_FONT FONT_8X8[];
-#endif
+
 
 #ifdef UGUI_USE_FONT_8X12
 extern UG_FONT FONT_8X12[];
@@ -74,11 +80,15 @@ extern UG_FONT FONT_24X40[];
 #ifdef UGUI_USE_FONT_32X53
 extern UG_FONT FONT_32X53[];
 #endif
+*/
+
+
 /*
   New fonts. They use Unicode encoding. Can be generated with the new version of ttf2ugui
   Accessing encodings higher than 127 () require UTF-8 enabled and set the editor settings to use that encoding.
   https://en.wikipedia.org/wiki/List_of_Unicode_characters
-*/
+
+
 #ifdef UGUI_USE_FONT_arial_6X6
 extern UG_FONT FONT_arial_6X6[];
 #endif
@@ -151,5 +161,5 @@ extern UG_FONT FONT_arial_49X57[];
 #ifdef UGUI_USE_FONT_arial_49X57_CYRILLIC
 extern UG_FONT FONT_arial_49X57_CYRILLIC[];
 #endif
-
+*/
 #endif // __UGUI_FONTS_DATA_H

@@ -8,30 +8,33 @@
 #include <stdint.h>
 
 /* Enable color mode */
-// #define UGUI_USE_COLOR_RGB888   // RGB = 0xFF,0xFF,0xFF
- #define UGUI_USE_COLOR_RGB565   // RGB = 0bRRRRRGGGGGGBBBBB
+#define UGUI_USE_COLOR_RGB888   // RGB = 0xFF,0xFF,0xFF
+// #define UGUI_USE_COLOR_RGB565   // RGB = 0bRRRRRGGGGGGBBBBB
 // #define UGUI_USE_COLOR_BW   // BW = 0x00|0xFF
 
 /* Depress text on touch, giving additional visual feedback, but requires full button redraw  */
-#define BUTTON_TXT_DEPRESS
+//#define BUTTON_TXT_DEPRESS
 
 /* Enable Touch Support */
-// #define UGUI_USE_TOUCH
+#define UGUI_USE_TOUCH
 
 /* Enable Console Support */
-// #define UGUI_USE_CONSOLE
+#define UGUI_USE_CONSOLE
 
 /* If you only use standard ASCII, disabling this will save some resources */
-// #define UGUI_USE_UTF8
+#define UGUI_USE_UTF8
 
 /* Enable needed fonts */
+#define UGUI_USE_FONT_SourceHanSansCN_Medium_13X16
+#define UGUI_USE_FONT_8X8
+/*
 #define UGUI_USE_FONT_4X16
 #define UGUI_USE_FONT_5X8
 #define UGUI_USE_FONT_5X12
 #define UGUI_USE_FONT_6X8
 #define UGUI_USE_FONT_6X10
 #define UGUI_USE_FONT_7X12
-#define UGUI_USE_FONT_8X8
+
 #define UGUI_USE_FONT_8X12
 #define UGUI_USE_FONT_8X12_CYRILLIC
 #define UGUI_USE_FONT_10X16
@@ -66,10 +69,10 @@
 #define UGUI_USE_FONT_arial_45X52_CYRILLIC
 #define UGUI_USE_FONT_arial_49X57
 #define UGUI_USE_FONT_arial_49X57_CYRILLIC
-
+*/
 /* Feature enablers */
-// #define UGUI_USE_PRERENDER_EVENT
-// #define UGUI_USE_POSTRENDER_EVENT
+#define UGUI_USE_PRERENDER_EVENT
+#define UGUI_USE_POSTRENDER_EVENT
 // #define UGUI_USE_MULTITASKING
 
 /* Specify platform-dependent types here */

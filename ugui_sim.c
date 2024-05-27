@@ -1,11 +1,12 @@
+// -*- coding: utf-8 -*-
 #include <stdlib.h>
 #include <stdio.h>
-
+#include <locale.h>
 #include "ugui_sim.h"
 
 // Simulator Variables
-#define WIDTH               330
-#define HEIGHT              250
+#define WIDTH               640
+#define HEIGHT              480
 #define SCREEN_MULTIPLIER   2
 #define SCREEN_MARGIN       15
 #define WINDOW_BACK_COLOR   0x00C0C0C0
@@ -57,8 +58,30 @@ simcfg_t* GUI_SimCfg(void)
 
 #define OBJ_Y(i)        BTN_HEIGHT*i+(INITIAL_MARGIN*(i+1))
 
+void gui_set_window_title(const char *title)
+{
+    UG_WindowSetTitleText(&wnd, (char*)title);
+}
+
+void gui_set_button_text(UG_WINDOW *wnd, UG_U8 id, const char *text)
+{
+    UG_ButtonSetText(wnd, id, (char*)text);
+}
+
+void gui_set_checkbox_text(UG_WINDOW *wnd, UG_U8 id, const char *text)
+{
+    UG_CheckboxSetText(wnd, id, (char*)text);
+}
+
+void gui_set_textbox_text(UG_WINDOW *wnd, UG_U8 id, const char *text)
+{
+    UG_TextboxSetText(wnd, id, (char*)text);
+}
+
 void GUI_Setup(UG_DEVICE *device)
 {
+    // Setup locale for UTF-8
+    setlocale(LC_ALL, "");
     //Setup UGUI
     UG_Init(&ugui, device);
 
@@ -66,36 +89,36 @@ void GUI_Setup(UG_DEVICE *device)
 
     //Setup Window
     UG_WindowCreate(&wnd, objs, MAX_OBJS, &windowHandler);
-    UG_WindowSetTitleTextFont (&wnd, &FONT_6X8);
-    UG_WindowSetTitleText(&wnd, "App Title");
+    UG_WindowSetTitleTextFont (&wnd, FONT_8X8);
+    gui_set_window_title("testone");
 
     // Buttons
     UG_ButtonCreate(&wnd, &btn0, BTN_ID_0, UGUI_POS(INITIAL_MARGIN, OBJ_Y(0), BTN_WIDTH, BTN_HEIGHT));
-    UG_ButtonSetFont(&wnd, BTN_ID_0, &FONT_6X8);
-    UG_ButtonSetText(&wnd, BTN_ID_0, "Btn 3D");
+    UG_ButtonSetFont(&wnd, BTN_ID_0, FONT_SourceHanSansCN_Medium_13X16);
+    gui_set_button_text(&wnd, BTN_ID_0, "中文测试1");
     UG_ButtonSetStyle(&wnd, BTN_ID_0, BTN_STYLE_3D);
 
     UG_ButtonCreate(&wnd, &btn1, BTN_ID_1, UGUI_POS(INITIAL_MARGIN, OBJ_Y(1), BTN_WIDTH, BTN_HEIGHT));
-    UG_ButtonSetFont(&wnd, BTN_ID_1, &FONT_6X8);
-    UG_ButtonSetText(&wnd, BTN_ID_1, "Btn 2D T");
+    UG_ButtonSetFont(&wnd, BTN_ID_1, FONT_SourceHanSansCN_Medium_13X16);
+    gui_set_button_text(&wnd, BTN_ID_1, "中文测试2");
     UG_ButtonSetStyle(&wnd, BTN_ID_1, BTN_STYLE_2D|BTN_STYLE_TOGGLE_COLORS);
 
     UG_ButtonCreate(&wnd, &btn2, BTN_ID_2, UGUI_POS(INITIAL_MARGIN, OBJ_Y(2), BTN_WIDTH, BTN_HEIGHT));
-    UG_ButtonSetFont(&wnd, BTN_ID_2, &FONT_6X8);
-    UG_ButtonSetText(&wnd, BTN_ID_2, "Btn 3D Alt");
+    UG_ButtonSetFont(&wnd, BTN_ID_2, FONT_SourceHanSansCN_Medium_13X16);
+    gui_set_button_text(&wnd, BTN_ID_2, "中文测试3");
     UG_ButtonSetStyle(&wnd, BTN_ID_2, BTN_STYLE_3D|BTN_STYLE_USE_ALTERNATE_COLORS);
     UG_ButtonSetAlternateForeColor(&wnd, BTN_ID_2, C_BLACK);
     UG_ButtonSetAlternateBackColor(&wnd, BTN_ID_2, C_WHITE);
 
     UG_ButtonCreate(&wnd, &btn3, BTN_ID_3, UGUI_POS(INITIAL_MARGIN, OBJ_Y(3), BTN_WIDTH, BTN_HEIGHT));
-    UG_ButtonSetFont(&wnd, BTN_ID_3, &FONT_6X8);
-    UG_ButtonSetText(&wnd, BTN_ID_3, "Btn NoB");
+    UG_ButtonSetFont(&wnd, BTN_ID_3, FONT_SourceHanSansCN_Medium_13X16);
+    gui_set_button_text(&wnd, BTN_ID_3, "中文测试4");
     UG_ButtonSetStyle(&wnd, BTN_ID_3, BTN_STYLE_NO_BORDERS|BTN_STYLE_TOGGLE_COLORS);
 
     // Checkboxes
     UG_CheckboxCreate(&wnd, &chb0, CHB_ID_0, UGUI_POS(INITIAL_MARGIN*2+BTN_WIDTH, OBJ_Y(0)+7, CHB_WIDTH, CHB_HEIGHT));
-    UG_CheckboxSetFont(&wnd, CHB_ID_0, &FONT_6X8);
-    UG_CheckboxSetText(&wnd, CHB_ID_0, "CHB");
+    UG_CheckboxSetFont(&wnd, CHB_ID_0, FONT_SourceHanSansCN_Medium_13X16);
+    gui_set_checkbox_text(&wnd, CHB_ID_0, "测试中文A");
     UG_CheckboxSetStyle(&wnd, CHB_ID_0, CHB_STYLE_3D);
     UG_CheckboxSetAlignment(&wnd, CHB_ID_0, ALIGN_TOP_LEFT);
     #if !defined(UGUI_USE_COLOR_BW)
@@ -103,52 +126,52 @@ void GUI_Setup(UG_DEVICE *device)
     #endif
 
     UG_CheckboxCreate(&wnd, &chb1, CHB_ID_1, UGUI_POS(INITIAL_MARGIN*2+BTN_WIDTH, OBJ_Y(1)+7, CHB_WIDTH, CHB_HEIGHT));
-    UG_CheckboxSetFont(&wnd, CHB_ID_1, &FONT_6X8);
-    UG_CheckboxSetText(&wnd, CHB_ID_1, "CHB");
+    UG_CheckboxSetFont(&wnd, CHB_ID_1, FONT_SourceHanSansCN_Medium_13X16);
+    gui_set_checkbox_text(&wnd, CHB_ID_1, "测试中文B");
     UG_CheckboxSetStyle(&wnd, CHB_ID_1, CHB_STYLE_2D|CHB_STYLE_TOGGLE_COLORS);
     UG_CheckboxSetAlignment(&wnd, CHB_ID_1, ALIGN_CENTER);
     UG_CheckboxShow(&wnd, CHB_ID_1);
 
     UG_CheckboxCreate(&wnd, &chb2, CHB_ID_2, UGUI_POS(INITIAL_MARGIN*2+BTN_WIDTH, OBJ_Y(2)+7, CHB_WIDTH, CHB_HEIGHT));
-    UG_CheckboxSetFont(&wnd, CHB_ID_2, &FONT_6X8);
-    UG_CheckboxSetText(&wnd, CHB_ID_2, "CHB");
+    UG_CheckboxSetFont(&wnd, CHB_ID_2, FONT_SourceHanSansCN_Medium_13X16);
+    gui_set_checkbox_text(&wnd, CHB_ID_2, "测试中文C");
     UG_CheckboxSetStyle(&wnd, CHB_ID_2, CHB_STYLE_3D|CHB_STYLE_USE_ALTERNATE_COLORS);
     UG_CheckboxSetAlignment(&wnd, CHB_ID_2, ALIGN_BOTTOM_LEFT);
     UG_CheckboxShow(&wnd, CHB_ID_2);
 
     UG_CheckboxCreate(&wnd, &chb3, CHB_ID_3, UGUI_POS(INITIAL_MARGIN*2+BTN_WIDTH, OBJ_Y(3)+7, CHB_WIDTH, CHB_HEIGHT));
-    UG_CheckboxSetFont(&wnd, CHB_ID_3, &FONT_6X8);
-    UG_CheckboxSetText(&wnd, CHB_ID_3, "CHB");
+    UG_CheckboxSetFont(&wnd, CHB_ID_3, FONT_SourceHanSansCN_Medium_13X16);
+    gui_set_checkbox_text(&wnd, CHB_ID_3, "测试中文D");
     UG_CheckboxSetStyle(&wnd, CHB_ID_3, CHB_STYLE_NO_BORDERS|CHB_STYLE_TOGGLE_COLORS);
     UG_CheckboxSetAlignment(&wnd, CHB_ID_3, ALIGN_BOTTOM_RIGHT);
     UG_CheckboxShow(&wnd, CHB_ID_3);
 
     // Texts
     UG_TextboxCreate(&wnd, &txt0, TXB_ID_0, UGUI_POS(INITIAL_MARGIN*3+BTN_WIDTH+CHB_WIDTH, OBJ_Y(0), 100, 15));
-    UG_TextboxSetFont(&wnd, TXB_ID_0, &FONT_4X6);
-    UG_TextboxSetText(&wnd, TXB_ID_0, "Small TEXT");
+    UG_TextboxSetFont(&wnd, TXB_ID_0, FONT_SourceHanSansCN_Medium_13X16);
+    gui_set_textbox_text(&wnd, TXB_ID_0, "测试中文E");
     #if !defined(UGUI_USE_COLOR_BW)
     UG_TextboxSetBackColor(&wnd, TXB_ID_0, C_PALE_TURQUOISE);
     #endif
 
     UG_TextboxCreate(&wnd, &txt1, TXB_ID_1, UGUI_POS(INITIAL_MARGIN*3+BTN_WIDTH+CHB_WIDTH, OBJ_Y(1)-15, 100, 30));
-    UG_TextboxSetFont(&wnd, TXB_ID_1, &FONT_12X20);
-    UG_TextboxSetText(&wnd, TXB_ID_1, "Text");
+    UG_TextboxSetFont(&wnd, TXB_ID_1, FONT_SourceHanSansCN_Medium_13X16);
+    gui_set_textbox_text(&wnd, TXB_ID_1, "测试中文F");
     #if !defined(UGUI_USE_COLOR_BW)
     UG_TextboxSetBackColor(&wnd, TXB_ID_1, C_PALE_TURQUOISE);
     #endif
     UG_TextboxSetAlignment(&wnd, TXB_ID_1, ALIGN_TOP_RIGHT);
 
     UG_TextboxCreate(&wnd, &txt2, TXB_ID_2, UGUI_POS(INITIAL_MARGIN*3+BTN_WIDTH+CHB_WIDTH, OBJ_Y(2)-15, 100, 45));
-    UG_TextboxSetFont(&wnd, TXB_ID_2, &FONT_24X40);
-    UG_TextboxSetText(&wnd, TXB_ID_2, "Text");
+    UG_TextboxSetFont(&wnd, TXB_ID_2, FONT_SourceHanSansCN_Medium_13X16);
+    gui_set_textbox_text(&wnd, TXB_ID_2, "测试中文G");
     #if !defined(UGUI_USE_COLOR_BW)
     UG_TextboxSetBackColor(&wnd, TXB_ID_2, C_PALE_TURQUOISE);
     #endif
 
     UG_TextboxCreate(&wnd, &txt3, TXB_ID_3, UGUI_POS(INITIAL_MARGIN*3+BTN_WIDTH+CHB_WIDTH, OBJ_Y(3), 100, 53));
-    UG_TextboxSetFont(&wnd, TXB_ID_3, &FONT_32X53);
-    UG_TextboxSetText(&wnd, TXB_ID_3, "ABC");
+    UG_TextboxSetFont(&wnd, TXB_ID_3, FONT_SourceHanSansCN_Medium_13X16);
+    gui_set_textbox_text(&wnd, TXB_ID_3, "测试中文H");
     #if !defined(UGUI_USE_COLOR_BW)
     UG_TextboxSetBackColor(&wnd, TXB_ID_3, C_PALE_TURQUOISE);
     #endif

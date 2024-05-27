@@ -121,18 +121,22 @@ typedef enum
 
 typedef struct
 {
-   FONT_TYPE    font_type;
-   UG_U8        is_old_font;                      // This exists to maintain compatibility with old fonts, as they use code page 850 instead of Unicode
-   UG_U8        char_width;
-   UG_U8        char_height;
-   UG_U16       bytes_per_char;
-   UG_U16       number_of_chars;
-   UG_U16       number_of_offsets;
-   const UG_U8  * widths;
-   const UG_U8  * offsets;
-   const UG_U8  * data;
-   UG_FONT      * font;
+    FONT_TYPE    font_type;
+    UG_U8        is_old_font;                      // This exists to maintain compatibility with old fonts, as they use code page 850 instead of Unicode
+    UG_U8        char_width;
+    UG_U8        char_height;
+    UG_U16       bytes_per_char;
+    UG_U16       number_of_chars;
+    UG_U16       number_of_offsets;
+	UG_U16       number_of_range_flags;
+    const UG_U8  *widths;
+    const UG_U8  *offsets;
+    const UG_U8  *range_flags;                     // Pointer to range flags array
+    const UG_U8  *data;
+    UG_FONT      *font;
 } UG_FONT_DATA;
+
+
 
 #ifdef UGUI_USE_UTF8
 typedef UG_U16                                        UG_CHAR;
