@@ -6,7 +6,7 @@ This is another form based on https://github.com/deividAlfa/UGUI with modificati
 5. Ensure that the str pointer is correctly updated in the _UG_DecodeUTF8 function. This typically involves appropriately incrementing the pointer after identifying the number of bytes in the character.
 6. Chinese Font is converted from Source Han Sans CN
 7. Simulation works normal for CJK characters
-
+<img src="./ugui.png" width="600">
 ------------------------------------------------------------------------------------------------
 ## License and Disclaimer for Source Han Sans CN
 
