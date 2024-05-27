@@ -1,9 +1,11 @@
 This is another form based on https://github.com/deividAlfa/UGUI with modifications:
 1. Extended UTF8 support, no longer limited by the original algorithm's 0X8000 high bit flag method, which caused confusion for CJK characters whose unicode fall over 0X8000.
-2. Limited modification: now the single character range for font conversion is invalid. The font range must appear in pairs, such as 0X20-0XFF. It is not allowed to convert only one character like 0x20 for use(although you can do the conversion,pointer does not skip+1 while it meets single string).
+2. now the single character range for font conversion should be repeated once so that font range will appear in pairs.(unicode 169 has an offset:0x00,0xA9,0x00,0xA9 Flag:0x01,0x00)
 3. Limited modification: The invalid ".is_old_font" code still works,but font array need to update to new structure..
 4. New C structure font array.
-5. Chinese Font is converted from Source Han Sans CN
+5. Ensure that the str pointer is correctly updated in the _UG_DecodeUTF8 function. This typically involves appropriately incrementing the pointer after identifying the number of bytes in the character.
+6. Chinese Font is converted from Source Han Sans CN
+7. Simulation works normal for CJK characters
 
 ------------------------------------------------------------------------------------------------
 ## License and Disclaimer for Source Han Sans CN
