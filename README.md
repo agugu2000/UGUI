@@ -1,3 +1,34 @@
+This is another form based on https://github.com/deividAlfa/UGUI with modifications:
+1. Extended UTF8 support, no longer limited by the original algorithm's 0X8000 high bit flag method, which caused confusion for CJK characters whose unicode fall over 0X8000.
+2. now the single character range for font conversion should be repeated once so that font range will appear in pairs.(unicode 169 has an offset:0x00,0xA9,0x00,0xA9 Flag:0x01,0x00)
+3. Limited modification: The ".is_old_font" code still works,but font array need to update to new structure.
+4. New C structure font array.
+5. Ensure that the str pointer is correctly updated in the _UG_DecodeUTF8 function. This typically involves appropriately incrementing the pointer after identifying the number of bytes in the character.
+6. Chinese Font is converted from Source Han Sans CN(Tool:https://github.com/agugu2000/ttf2ugui)
+7. Simulation works normal for CJK characters
+<img src="./ugui.png" width="600">
+
+Simulator:
+- ugui_sim.c / ugui_sim.h: platform independent application layer
+- ugui_sim_sdl.c: SDL2 platform layer
+- Build requires CMake 3.16+, MinGW-w64 on Windows or build-essential on Linux
+- SDL2 source is bundled in deps/SDL-release-2.32.10.zip, extracted at configure time
+
+Build:
+  Windows (MinGW):
+    cmake -S . -B build -G "MinGW Makefiles"
+    cmake --build build -j
+  Linux:
+    cmake -S . -B build
+    cmake --build build -j
+
+Run:
+  Windows: build\ugui_sim.exe
+  Linux:   ./build/ugui_sim
+
+
+------------------------------------------------------------------------------------------------
+
 This is a forked version adding several enhancements:<br>
 - Code reworked using [0x3333](https://github.com/0x3333/UGUI) UGUI fork.
 - New font structure and functions.<br>

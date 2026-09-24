@@ -18,7 +18,7 @@
 /* -------------------------------------------------------------------------------- */
 // Andrey Filimonov (-->https://github.com/Sermus)
 // for giving valuable suggestions, reporting bugs and adding several new features.
-// Andrey also put a lot of work in the implementaion of anti-aliased font support. 
+// Andrey also put a lot of work in the implementaion of anti-aliased font support.
 //
 // Mikhail Podkur (-->https://github.com/MikhailPodkur)
 // for adding cyrillic 8x12 font, checkbox feature and RGB565 support.
