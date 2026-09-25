@@ -651,7 +651,9 @@ void GUI_Process(void)
 {
     /* Shadow only on Page 3. Use next_window if pending. */
     UG_WINDOW *target = ugui.next_window ? ugui.next_window : ugui.active_window;
-    UG_FontSetShadow(target == &wnd3 ? 1 : 0);
+    UG_FontSetShadow(target == &wnd1 ? 0 :
+                     target == &wnd2 ? 2 :
+                     target == &wnd3 ? 1 : 0);
 
     if (g_running)
     {

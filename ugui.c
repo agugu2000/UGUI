@@ -1162,15 +1162,30 @@ static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COL
             }
 
             if (gui->shadow_font) {
-               UG_COLOR shadow_color =
-                  ((((fc & 0xFF)   * 64 + (bc & 0xFF)   * 192) >> 8) & 0xFF)   |
-                  ((((fc & 0xFF00) * 64 + (bc & 0xFF00) * 192) >> 8) & 0xFF00) |
-                  ((((fc & 0xFF0000) * 64 + (bc & 0xFF0000) * 192) >> 8) & 0xFF0000);
+                UG_COLOR shadow_color =
+                    ((((fc & 0xFF)   * 64 + (bc & 0xFF)   * 192) >> 8) & 0xFF)   |
+                    ((((fc & 0xFF00) * 64 + (bc & 0xFF00) * 192) >> 8) & 0xFF00) |
+                    ((((fc & 0xFF0000) * 64 + (bc & 0xFF0000) * 192) >> 8) & 0xFF0000);
 
-                _UG_BlitGlyph1BPP(g,
-                                  draw_x + 1, draw_y + 1,
-                                  shadow_color, shadow_color,
-                                  1 /* ink only */);
+                if (gui->shadow_font == 1) {
+                    /* Drop shadow: single offset (+1, +1) */
+                    _UG_BlitGlyph1BPP(g,
+                                      draw_x + 1, draw_y + 1,
+                                      shadow_color, shadow_color,
+                                      1 /* ink only */);
+                } else if (gui->shadow_font == 2) {
+                    /* Outline: 8 directions */
+                    UG_S16 dx, dy;
+                    for (dy = -1; dy <= 1; dy++) {
+                        for (dx = -1; dx <= 1; dx++) {
+                            if (dx == 0 && dy == 0) continue;
+                            _UG_BlitGlyph1BPP(g,
+                                              draw_x + dx, draw_y + dy,
+                                              shadow_color, shadow_color,
+                                              1 /* ink only */);
+                        }
+                    }
+                }
             }
 
             _UG_BlitGlyph1BPP(g,
