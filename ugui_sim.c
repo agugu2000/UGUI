@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <locale.h>
+#include <string.h>
 
 #include "ugui_sim.h"
 
@@ -12,17 +13,64 @@
 #include "ugui_checkbox.h"
 #include "ugui_textbox.h"
 #include "ugui_progress.h"
+#include "ugui_image.h"
 #include "ugui_fonts.h"
 
 /* -------------------------------------------------------------------------------- */
 /* -- Simulator configuration                                                     -- */
 /* -------------------------------------------------------------------------------- */
-#define WIDTH               640
-#define HEIGHT              480
-#define SCREEN_MULTIPLIER   2
+#define WIDTH               800
+#define HEIGHT              600
+#define SCREEN_MULTIPLIER   1
 #define SCREEN_MARGIN       15
 #define WINDOW_BACK_COLOR   0x00C0C0C0
 #define MAX_OBJS            15
+
+/* -------------------------------------------------------------------------------- */
+/* -- UI text constants (edit here to change all displayed strings)               -- */
+/* -------------------------------------------------------------------------------- */
+#define TXT_WINDOW_TITLE        "uGUI simulator: Test"
+
+#define TXT_BTN_START           "开始"
+#define TXT_BTN_STOP            "停止"
+#define TXT_BTN_RESET           "复位"
+
+#define TXT_CHB_LOG             "启用记录"
+#define TXT_CHB_REFRESH         "自动刷新"
+#define TXT_CHB_DETAILS         "显示详情"
+
+#define TXT_STATUS_PREFIX       "状态："
+#define TXT_STATUS_STOPPED      "已停止"
+#define TXT_STATUS_RUNNING      "运行中"
+#define TXT_STATUS_RESET        "复位"
+
+#define TXT_BMP_LABEL           "16x16 RGB565 BMP"
+
+#define TXT_INFO_FMT            \
+    "记录中: %s\n"             \
+    "自动刷新: %s\n"        \
+    "显示详情: %s\n"        \
+    "进度: %d%%\n"          \
+    "速度: %d%%\n"             \
+    "等级: %d%%"
+
+#define TXT_ON                  "On"
+#define TXT_OFF                 "Off"
+
+/* -------------------------------------------------------------------------------- */
+/* -- BMP test pattern colors (RGB565)                                            -- */
+/* -------------------------------------------------------------------------------- */
+
+/* RGB888 (0xRRGGBB) -> RGB565 (0xRRRRRGGGGGGBBBBB) */
+#define RGB888_TO_RGB565(rgb) \
+    ( (UG_U16)( (((rgb) >> 8) & 0xF800) | \
+                (((rgb) >> 5) & 0x07E0) | \
+                (((rgb) >> 3) & 0x001F) ) )
+
+#define BMP_COLOR_Q1            RGB888_TO_RGB565(0xFFC000)
+#define BMP_COLOR_Q2            RGB888_TO_RGB565(0xb6bd69)
+#define BMP_COLOR_Q3            RGB888_TO_RGB565(0x2b6f64)
+#define BMP_COLOR_Q4            RGB888_TO_RGB565(0x203642)
 
 /* -------------------------------------------------------------------------------- */
 /* -- Global vars                                                                 -- */
@@ -32,16 +80,76 @@ static simcfg_t *simCfg = NULL;
 static UG_GUI    ugui;
 static UG_WINDOW wnd;
 
-static UG_BUTTON   btn0, btn1, btn2, btn3;
-static UG_CHECKBOX chb0, chb1, chb2, chb3;
-static UG_TEXTBOX  txt0, txt1, txt2, txt3;
-static UG_PROGRESS pgb0, pgb1;
+/* Objects */
+static UG_PROGRESS pgb_status;
+static UG_TEXTBOX  txt_status;
+static UG_BUTTON   btn_start, btn_stop, btn_reset;
+static UG_CHECKBOX chb_log, chb_refresh, chb_details;
+static UG_PROGRESS pgb_speed, pgb_level;
+static UG_TEXTBOX  txb_info;
+static UG_IMAGE    img_test;
+static UG_TEXTBOX  txb_img_label;
+
 static UG_OBJECT   objs[MAX_OBJS];
+
+/* Runtime state */
+static UG_U8 g_running = 0;      /* 0=stopped, 1=running */
+static UG_U8 g_progress = 0;     /* 0-100 */
+static UG_U8 g_speed = 50;       /* 0-100 */
+static UG_U8 g_level = 30;       /* 0-100 */
+
+/* -------------------------------------------------------------------------------- */
+/* -- BMP test pattern: 16x16 RGB565, 4 quadrants (red/green/blue/yellow)         -- */
+/* -------------------------------------------------------------------------------- */
+static const UG_U16 bmp_test_data[16*16] = {
+    /* row 0 */
+    BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1, BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,
+    /* row 1 */
+    BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1, BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,
+    /* row 2 */
+    BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1, BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,
+    /* row 3 */
+    BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1, BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,
+    /* row 4 */
+    BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1, BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,
+    /* row 5 */
+    BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1, BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,
+    /* row 6 */
+    BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1, BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,
+    /* row 7 */
+    BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1,BMP_COLOR_Q1, BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,BMP_COLOR_Q2,
+    /* row 8 */
+    BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3, BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,
+    /* row 9 */
+    BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3, BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,
+    /* row 10 */
+    BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3, BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,
+    /* row 11 */
+    BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3, BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,
+    /* row 12 */
+    BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3, BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,
+    /* row 13 */
+    BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3, BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,
+    /* row 14 */
+    BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3, BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,
+    /* row 15 */
+    BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3,BMP_COLOR_Q3, BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4,BMP_COLOR_Q4
+};
+
+static const UG_BMP bmp_test = {
+    (const void*)bmp_test_data,
+    16,                     /* width  */
+    16,                     /* height */
+    BMP_BPP_16,             /* bpp    */
+    BMP_RGB565              /* colors */
+};
 
 /* -------------------------------------------------------------------------------- */
 /* -- Forward decls                                                               -- */
 /* -------------------------------------------------------------------------------- */
 static void windowHandler(UG_MESSAGE *msg);
+static void update_info_text(void);
+static void update_status_text(const char *s);
 
 /* -------------------------------------------------------------------------------- */
 /* -- decode_msg: application-level message print                                 -- */
@@ -85,14 +193,34 @@ simcfg_t* GUI_SimCfg(void)
 }
 
 /* -------------------------------------------------------------------------------- */
-/* -- Layout helpers                                                              -- */
+/* -- Info text: compose from checkbox states                                     -- */
 /* -------------------------------------------------------------------------------- */
-#define INITIAL_MARGIN  3
-#define BTN_WIDTH       100
-#define BTN_HEIGHT      30
-#define CHB_WIDTH       100
-#define CHB_HEIGHT      14
-#define OBJ_Y(i)        (BTN_HEIGHT * (i) + (INITIAL_MARGIN * ((i) + 1)))
+static char info_buf[256];
+
+static void update_info_text(void)
+{
+    snprintf(info_buf, sizeof(info_buf),
+             TXT_INFO_FMT,
+             UG_CheckboxGetChecked(&wnd, CHB_ID_0) ? TXT_ON : TXT_OFF,
+             UG_CheckboxGetChecked(&wnd, CHB_ID_1) ? TXT_ON : TXT_OFF,
+             UG_CheckboxGetChecked(&wnd, CHB_ID_2) ? TXT_ON : TXT_OFF,
+             (int)g_progress,
+             (int)g_speed,
+             (int)g_level);
+
+    UG_TextboxSetText(&wnd, TXB_ID_1, info_buf);
+}
+
+/* -------------------------------------------------------------------------------- */
+/* -- Status text                                                                 -- */
+/* -------------------------------------------------------------------------------- */
+static char status_buf[64];
+
+static void update_status_text(const char *s)
+{
+    snprintf(status_buf, sizeof(status_buf), "%s%s", TXT_STATUS_PREFIX, s);
+    UG_TextboxSetText(&wnd, TXB_ID_0, status_buf);
+}
 
 /* -------------------------------------------------------------------------------- */
 /* -- Setup                                                                       -- */
@@ -106,114 +234,94 @@ void GUI_Setup(UG_DEVICE *device)
 
     /* Window */
     UG_WindowCreate(&wnd, objs, MAX_OBJS, windowHandler);
+    UG_WindowSetTitleHeight(&wnd, 0);
     UG_WindowSetTitleTextFont(&wnd, FONT_8X8);
-    UG_WindowSetTitleText(&wnd, "testone");
+    UG_WindowSetTitleText(&wnd, TXT_WINDOW_TITLE);
 
-    /* ---- Buttons ---- */
-    UG_ButtonCreate(&wnd, &btn0, BTN_ID_0,
-                    UGUI_POS(INITIAL_MARGIN, OBJ_Y(0), BTN_WIDTH, BTN_HEIGHT));
+    /* ---- Status area ---- */
+    UG_ProgressCreate(&wnd, &pgb_status, PGB_ID_0,
+                      UGUI_POS(10, 5, 770, 30));
+    UG_ProgressSetProgress(&wnd, PGB_ID_0, g_progress);
+
+    UG_TextboxCreate(&wnd, &txt_status, TXB_ID_0,
+                     UGUI_POS(10, 45, 770, 30));
+    UG_TextboxSetFont(&wnd, TXB_ID_0, FONT_SIMSUN2_13X13);
+    UG_TextboxSetText(&wnd, TXB_ID_0, TXT_STATUS_PREFIX TXT_STATUS_STOPPED);
+    UG_TextboxSetAlignment(&wnd, TXB_ID_0, ALIGN_CENTER_LEFT);
+
+    /* ---- Control area ---- */
+    UG_ButtonCreate(&wnd, &btn_start, BTN_ID_0,
+                    UGUI_POS(10, 85, 180, 40));
     UG_ButtonSetFont(&wnd, BTN_ID_0, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd, BTN_ID_0, "中文测试1");
+    UG_ButtonSetText(&wnd, BTN_ID_0, TXT_BTN_START);
     UG_ButtonSetStyle(&wnd, BTN_ID_0, BTN_STYLE_3D);
 
-    UG_ButtonCreate(&wnd, &btn1, BTN_ID_1,
-                    UGUI_POS(INITIAL_MARGIN, OBJ_Y(1), BTN_WIDTH, BTN_HEIGHT));
+    UG_ButtonCreate(&wnd, &btn_stop, BTN_ID_1,
+                    UGUI_POS(200, 85, 180, 40));
     UG_ButtonSetFont(&wnd, BTN_ID_1, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd, BTN_ID_1, "中文测试2");
-    UG_ButtonSetStyle(&wnd, BTN_ID_1, BTN_STYLE_2D | BTN_STYLE_TOGGLE_COLORS);
+    UG_ButtonSetText(&wnd, BTN_ID_1, TXT_BTN_STOP);
+    UG_ButtonSetStyle(&wnd, BTN_ID_1, BTN_STYLE_3D);
 
-    UG_ButtonCreate(&wnd, &btn2, BTN_ID_2,
-                    UGUI_POS(INITIAL_MARGIN, OBJ_Y(2), BTN_WIDTH, BTN_HEIGHT));
+    UG_ButtonCreate(&wnd, &btn_reset, BTN_ID_2,
+                    UGUI_POS(390, 85, 180, 40));
     UG_ButtonSetFont(&wnd, BTN_ID_2, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd, BTN_ID_2, "中文测试3");
-    UG_ButtonSetStyle(&wnd, BTN_ID_2, BTN_STYLE_3D | BTN_STYLE_USE_ALTERNATE_COLORS);
-    UG_ButtonSetAlternateForeColor(&wnd, BTN_ID_2, C_BLACK);
-    UG_ButtonSetAlternateBackColor(&wnd, BTN_ID_2, C_WHITE);
+    UG_ButtonSetText(&wnd, BTN_ID_2, TXT_BTN_RESET);
+    UG_ButtonSetStyle(&wnd, BTN_ID_2, BTN_STYLE_3D);
 
-    UG_ButtonCreate(&wnd, &btn3, BTN_ID_3,
-                    UGUI_POS(INITIAL_MARGIN, OBJ_Y(3), BTN_WIDTH, BTN_HEIGHT));
-    UG_ButtonSetFont(&wnd, BTN_ID_3, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd, BTN_ID_3, "中文测试4");
-    UG_ButtonSetStyle(&wnd, BTN_ID_3, BTN_STYLE_NO_BORDERS | BTN_STYLE_TOGGLE_COLORS);
-
-    /* ---- Checkboxes ---- */
-    UG_CheckboxCreate(&wnd, &chb0, CHB_ID_0,
-                      UGUI_POS(INITIAL_MARGIN * 2 + BTN_WIDTH, OBJ_Y(0) + 7, CHB_WIDTH, CHB_HEIGHT));
+    /* ---- Option area ---- */
+    UG_CheckboxCreate(&wnd, &chb_log, CHB_ID_0,
+                      UGUI_POS(10, 135, 300, 22));
     UG_CheckboxSetFont(&wnd, CHB_ID_0, FONT_SIMSUN2_13X13);
-    UG_CheckboxSetText(&wnd, CHB_ID_0, "测试中文A");
+    UG_CheckboxSetText(&wnd, CHB_ID_0, TXT_CHB_LOG);
     UG_CheckboxSetStyle(&wnd, CHB_ID_0, CHB_STYLE_3D);
-    UG_CheckboxSetAlignment(&wnd, CHB_ID_0, ALIGN_TOP_LEFT);
-#if !defined(UGUI_USE_COLOR_BW)
-    UG_CheckboxSetBackColor(&wnd, CHB_ID_0, C_PALE_TURQUOISE);
-#endif
+    UG_CheckboxSetAlignment(&wnd, CHB_ID_0, ALIGN_CENTER_LEFT);
+    UG_CheckboxSetChecked(&wnd, CHB_ID_0, 1);
 
-    UG_CheckboxCreate(&wnd, &chb1, CHB_ID_1,
-                      UGUI_POS(INITIAL_MARGIN * 2 + BTN_WIDTH, OBJ_Y(1) + 7, CHB_WIDTH, CHB_HEIGHT));
+    UG_CheckboxCreate(&wnd, &chb_refresh, CHB_ID_1,
+                      UGUI_POS(10, 162, 300, 22));
     UG_CheckboxSetFont(&wnd, CHB_ID_1, FONT_SIMSUN2_13X13);
-    UG_CheckboxSetText(&wnd, CHB_ID_1, "测试中文B");
-    UG_CheckboxSetStyle(&wnd, CHB_ID_1, CHB_STYLE_2D | CHB_STYLE_TOGGLE_COLORS);
-    UG_CheckboxSetAlignment(&wnd, CHB_ID_1, ALIGN_CENTER);
-    UG_CheckboxShow(&wnd, CHB_ID_1);
+    UG_CheckboxSetText(&wnd, CHB_ID_1, TXT_CHB_REFRESH);
+    UG_CheckboxSetStyle(&wnd, CHB_ID_1, CHB_STYLE_3D);
+    UG_CheckboxSetAlignment(&wnd, CHB_ID_1, ALIGN_CENTER_LEFT);
+    UG_CheckboxSetChecked(&wnd, CHB_ID_1, 0);
 
-    UG_CheckboxCreate(&wnd, &chb2, CHB_ID_2,
-                      UGUI_POS(INITIAL_MARGIN * 2 + BTN_WIDTH, OBJ_Y(2) + 7, CHB_WIDTH, CHB_HEIGHT));
+    UG_CheckboxCreate(&wnd, &chb_details, CHB_ID_2,
+                      UGUI_POS(10, 189, 300, 22));
     UG_CheckboxSetFont(&wnd, CHB_ID_2, FONT_SIMSUN2_13X13);
-    UG_CheckboxSetText(&wnd, CHB_ID_2, "测试中文C");
-    UG_CheckboxSetStyle(&wnd, CHB_ID_2, CHB_STYLE_3D | CHB_STYLE_USE_ALTERNATE_COLORS);
-    UG_CheckboxSetAlignment(&wnd, CHB_ID_2, ALIGN_BOTTOM_LEFT);
-    UG_CheckboxShow(&wnd, CHB_ID_2);
+    UG_CheckboxSetText(&wnd, CHB_ID_2, TXT_CHB_DETAILS);
+    UG_CheckboxSetStyle(&wnd, CHB_ID_2, CHB_STYLE_3D);
+    UG_CheckboxSetAlignment(&wnd, CHB_ID_2, ALIGN_CENTER_LEFT);
+    UG_CheckboxSetChecked(&wnd, CHB_ID_2, 1);
 
-    UG_CheckboxCreate(&wnd, &chb3, CHB_ID_3,
-                      UGUI_POS(INITIAL_MARGIN * 2 + BTN_WIDTH, OBJ_Y(3) + 7, CHB_WIDTH, CHB_HEIGHT));
-    UG_CheckboxSetFont(&wnd, CHB_ID_3, FONT_SIMSUN2_13X13);
-    UG_CheckboxSetText(&wnd, CHB_ID_3, "测试中文D");
-    UG_CheckboxSetStyle(&wnd, CHB_ID_3, CHB_STYLE_NO_BORDERS | CHB_STYLE_TOGGLE_COLORS);
-    UG_CheckboxSetAlignment(&wnd, CHB_ID_3, ALIGN_BOTTOM_RIGHT);
-    UG_CheckboxShow(&wnd, CHB_ID_3);
+    /* ---- Parameter area ---- */
+    UG_ProgressCreate(&wnd, &pgb_speed, PGB_ID_1,
+                      UGUI_POS(10, 220, 770, 30));
+    UG_ProgressSetProgress(&wnd, PGB_ID_1, g_speed);
 
-    /* ---- Textboxes ---- */
-    UG_TextboxCreate(&wnd, &txt0, TXB_ID_0,
-                     UGUI_POS(INITIAL_MARGIN * 3 + BTN_WIDTH + CHB_WIDTH, OBJ_Y(0), 100, 15));
-    UG_TextboxSetFont(&wnd, TXB_ID_0, FONT_SIMSUN2_13X13);
-    UG_TextboxSetText(&wnd, TXB_ID_0, "测试中文E");
-#if !defined(UGUI_USE_COLOR_BW)
-    UG_TextboxSetBackColor(&wnd, TXB_ID_0, C_PALE_TURQUOISE);
-#endif
+    UG_ProgressCreate(&wnd, &pgb_level, PGB_ID_2,
+                      UGUI_POS(10, 260, 770, 30));
+    UG_ProgressSetProgress(&wnd, PGB_ID_2, g_level);
 
-    UG_TextboxCreate(&wnd, &txt1, TXB_ID_1,
-                     UGUI_POS(INITIAL_MARGIN * 3 + BTN_WIDTH + CHB_WIDTH, OBJ_Y(1) - 15, 100, 30));
+    /* ---- Info area ---- */
+    UG_TextboxCreate(&wnd, &txb_info, TXB_ID_1,
+                     UGUI_POS(10, 300, 770, 130));
     UG_TextboxSetFont(&wnd, TXB_ID_1, FONT_SIMSUN2_13X13);
-    UG_TextboxSetText(&wnd, TXB_ID_1, "测试中文F");
-#if !defined(UGUI_USE_COLOR_BW)
-    UG_TextboxSetBackColor(&wnd, TXB_ID_1, C_PALE_TURQUOISE);
-#endif
-    UG_TextboxSetAlignment(&wnd, TXB_ID_1, ALIGN_TOP_RIGHT);
+    UG_TextboxSetAlignment(&wnd, TXB_ID_1, ALIGN_TOP_LEFT);
+    UG_TextboxSetText(&wnd, TXB_ID_1, "");
 
-    UG_TextboxCreate(&wnd, &txt2, TXB_ID_2,
-                     UGUI_POS(INITIAL_MARGIN * 3 + BTN_WIDTH + CHB_WIDTH, OBJ_Y(2) - 15, 100, 45));
+    /* ---- Icon area ---- */
+    UG_ImageCreate(&wnd, &img_test, IMG_ID_0,
+                   UGUI_POS(10, 440, 16, 16));
+    UG_ImageSetBMP(&wnd, IMG_ID_0, &bmp_test);
+
+    UG_TextboxCreate(&wnd, &txb_img_label, TXB_ID_2,
+                     UGUI_POS(40, 440, 300, 20));
     UG_TextboxSetFont(&wnd, TXB_ID_2, FONT_SIMSUN2_13X13);
-    UG_TextboxSetText(&wnd, TXB_ID_2, "测试中文G");
-#if !defined(UGUI_USE_COLOR_BW)
-    UG_TextboxSetBackColor(&wnd, TXB_ID_2, C_PALE_TURQUOISE);
-#endif
+    UG_TextboxSetText(&wnd, TXB_ID_2, TXT_BMP_LABEL);
+    UG_TextboxSetAlignment(&wnd, TXB_ID_2, ALIGN_CENTER_LEFT);
 
-    UG_TextboxCreate(&wnd, &txt3, TXB_ID_3,
-                     UGUI_POS(INITIAL_MARGIN * 3 + BTN_WIDTH + CHB_WIDTH, OBJ_Y(3), 100, 53));
-    UG_TextboxSetFont(&wnd, TXB_ID_3, FONT_SIMSUN2_13X13);
-    UG_TextboxSetText(&wnd, TXB_ID_3, "测试中文H");
-#if !defined(UGUI_USE_COLOR_BW)
-    UG_TextboxSetBackColor(&wnd, TXB_ID_3, C_PALE_TURQUOISE);
-#endif
-
-    /* ---- Progress bars ---- */
-    UG_ProgressCreate(&wnd, &pgb0, PGB_ID_0,
-                      UGUI_POS(INITIAL_MARGIN, OBJ_Y(4) + 20, 157, 20));
-    UG_ProgressSetProgress(&wnd, PGB_ID_0, 35);
-
-    UG_ProgressCreate(&wnd, &pgb1, PGB_ID_1,
-                      UGUI_POS(159 + INITIAL_MARGIN * 2, OBJ_Y(4) + 25, 156, 10));
-    UG_ProgressSetStyle(&wnd, PGB_ID_1, PGB_STYLE_2D | PGB_STYLE_FORE_COLOR_MESH);
-    UG_ProgressSetProgress(&wnd, PGB_ID_1, 75);
+    /* Initial info text */
+    update_info_text();
 
     UG_WindowShow(&wnd);
 }
@@ -223,6 +331,22 @@ void GUI_Setup(UG_DEVICE *device)
 /* -------------------------------------------------------------------------------- */
 void GUI_Process(void)
 {
+    if (g_running)
+    {
+        /* Advance progress bar */
+        g_progress = (g_progress >= 100) ? 0 : (UG_U8)(g_progress + 1);
+
+        /* Wobble speed / level slightly to show "running" */
+        g_speed = (UG_U8)(50 + ((g_progress * 3) % 50));
+        g_level = (UG_U8)(30 + ((g_progress * 7) % 70));
+
+        UG_ProgressSetProgress(&wnd, PGB_ID_0, g_progress);
+        UG_ProgressSetProgress(&wnd, PGB_ID_1, g_speed);
+        UG_ProgressSetProgress(&wnd, PGB_ID_2, g_level);
+
+        update_info_text();
+    }
+
     UG_Update();
 }
 
@@ -233,33 +357,43 @@ static void windowHandler(UG_MESSAGE *msg)
 {
     decode_msg(msg);
 
-#if defined(UGUI_USE_TOUCH)
-    if (msg->type == MSG_TYPE_OBJECT)
+    if (msg->type != MSG_TYPE_OBJECT) return;
+    if (msg->event != OBJ_EVENT_RELEASED) return;
+
+    switch (msg->id)
     {
-        UG_OBJECT* obj = msg->src;
-        if (obj)
+    case OBJ_TYPE_BUTTON:
+        switch (msg->sub_id)
         {
-            if (obj->touch_state & OBJ_TOUCH_STATE_CHANGED)                 printf("|CHANGED");
-            if (obj->touch_state & OBJ_TOUCH_STATE_PRESSED_ON_OBJECT)       printf("|PRESSED_ON_OBJECT");
-            if (obj->touch_state & OBJ_TOUCH_STATE_PRESSED_OUTSIDE_OBJECT)  printf("|PRESSED_OUTSIDE_OBJECT");
-            if (obj->touch_state & OBJ_TOUCH_STATE_RELEASED_ON_OBJECT)      printf("|RELEASED_ON_OBJECT");
-            if (obj->touch_state & OBJ_TOUCH_STATE_RELEASED_OUTSIDE_OBJECT) printf("|RELEASED_OUTSIDE_OBJECT");
-            if (obj->touch_state & OBJ_TOUCH_STATE_IS_PRESSED_ON_OBJECT)    printf("|IS_PRESSED_ON_OBJECT");
-            if (obj->touch_state & OBJ_TOUCH_STATE_IS_PRESSED)              printf("|IS_PRESSED");
-            if (obj->touch_state & OBJ_TOUCH_STATE_INIT)                    printf("|INIT");
-            printf("\n");
-        }
+        case BTN_ID_0:  /* Start */
+            g_running = 1;
+            update_status_text(TXT_STATUS_RUNNING);
+            break;
 
-        /* Advance progress bars on click (same behavior as original) */
-        if (UG_ProgressGetProgress(&wnd, PGB_ID_0) == 100)
+        case BTN_ID_1:  /* Stop */
+            g_running = 0;
+            update_status_text(TXT_STATUS_STOPPED);
+            break;
+
+        case BTN_ID_2:  /* Reset */
+            g_running = 0;
+            g_progress = 0;
+            g_speed = 50;
+            g_level = 30;
             UG_ProgressSetProgress(&wnd, PGB_ID_0, 0);
-        else
-            UG_ProgressSetProgress(&wnd, PGB_ID_0, UG_ProgressGetProgress(&wnd, PGB_ID_0) + 1);
+            UG_ProgressSetProgress(&wnd, PGB_ID_1, 50);
+            UG_ProgressSetProgress(&wnd, PGB_ID_2, 30);
+            UG_CheckboxSetChecked(&wnd, CHB_ID_0, 1);
+            UG_CheckboxSetChecked(&wnd, CHB_ID_1, 0);
+            UG_CheckboxSetChecked(&wnd, CHB_ID_2, 1);
+            update_status_text(TXT_STATUS_RESET);
+            update_info_text();
+            break;
+        }
+        break;
 
-        if (UG_ProgressGetProgress(&wnd, PGB_ID_1) == 100)
-            UG_ProgressSetProgress(&wnd, PGB_ID_1, 0);
-        else
-            UG_ProgressSetProgress(&wnd, PGB_ID_1, UG_ProgressGetProgress(&wnd, PGB_ID_1) + 1);
+    case OBJ_TYPE_CHECKBOX:
+        update_info_text();
+        break;
     }
-#endif
 }

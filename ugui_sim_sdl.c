@@ -33,8 +33,7 @@ static void sdl_pset(UG_S16 x, UG_S16 y, UG_COLOR c)
     tmp = _UG_ConvertRGB565ToRGB888(c);
 #endif
 
-    /* UG_COLOR is 0x00RRGGBB; SDL ARGB8888 is 0xAARRGGBB.
-     * Just OR in 0xFF000000 for alpha, no R/B swap needed. */
+    /* UG_COLOR is 0x00RRGGBB; SDL ARGB8888 is 0xAARRGGBB. */
     tmp |= 0xFF000000;
 
     int mult  = simCfg->screenMultiplier;
@@ -55,10 +54,15 @@ static void sdl_pset(UG_S16 x, UG_S16 y, UG_COLOR c)
 static void sdl_flush(void)
 {
     int pitch = simCfg->width * simCfg->screenMultiplier * (int)sizeof(uint32_t);
+    int texW  = simCfg->width  * simCfg->screenMultiplier;
+    int texH  = simCfg->height * simCfg->screenMultiplier;
 
     SDL_UpdateTexture(handle->tex, NULL, handle->imgBuffer, pitch);
     SDL_RenderClear(handle->ren);
-    SDL_RenderCopy(handle->ren, handle->tex, NULL, NULL);
+
+    SDL_Rect dst = { simCfg->screenMargin, simCfg->screenMargin, texW, texH };
+    SDL_RenderCopy(handle->ren, handle->tex, NULL, &dst);
+
     SDL_RenderPresent(handle->ren);
 }
 
@@ -84,26 +88,31 @@ static int sdl_setup(int width, int height)
         bounds.x = 0; bounds.y = 0; bounds.w = 1920; bounds.h = 1080;
     }
 
-    /* If window exceeds screen, fall back multiplier to 1 */
-    int mult = simCfg->screenMultiplier;
-    int winW = width  * mult + simCfg->screenMargin * 2;
-    int winH = height * mult + simCfg->screenMargin * 2;
+    int mult   = simCfg->screenMultiplier;
+    int margin = simCfg->screenMargin;
+
+    int winW = width  * mult + margin * 2;
+    int winH = height * mult + margin * 2;
 
     if ((winW > bounds.w || winH > bounds.h) && mult > 1) {
         mult = 1;
         simCfg->screenMultiplier = 1;
-        winW = width  * mult + simCfg->screenMargin * 2;
-        winH = height * mult + simCfg->screenMargin * 2;
+        winW = width  * mult + margin * 2;
+        winH = height * mult + margin * 2;
         fprintf(stderr, "Window too large, fallback multiplier to 1x\n");
     }
 
     int winX = bounds.x + (bounds.w - winW) / 2;
     int winY = bounds.y + (bounds.h - winH) / 2;
+    if (winX < bounds.x) winX = bounds.x;
+    if (winY < bounds.y) winY = bounds.y;
 
+    /* No SDL_WINDOW_RESIZABLE: prevents user from stretching the window
+     * and breaking 1:1 pixel mapping. */
     handle->win = SDL_CreateWindow("uGUI Simulator",
                                    winX, winY,
                                    winW, winH,
-                                   SDL_WINDOW_RESIZABLE);
+                                   0);
     if (!handle->win) {
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         return 0;
@@ -128,10 +137,6 @@ static int sdl_setup(int width, int height)
     }
 
     SDL_SetTextureBlendMode(handle->tex, SDL_BLENDMODE_NONE);
-
-    /* Content drawn at (margin, margin), 1:1 no stretch */
-    SDL_Rect vp = { simCfg->screenMargin, simCfg->screenMargin, texW, texH };
-    SDL_RenderSetViewport(handle->ren, &vp);
 
     handle->imgBuffer = (uint32_t *)calloc((size_t)texW * (size_t)texH,
                                            sizeof(uint32_t));
@@ -184,6 +189,15 @@ int main(int argc, char *argv[])
     (void)argc; (void)argv;
 
     printf("uGUI SDL2 Simulator\n");
+
+    /* Disable DPI scaling so 1 logical pixel == 1 physical pixel.
+     * Without this, Windows at 125%/150% will scale the window,
+     * and 1BPP fonts will look uneven. */
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "monitor");
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "0");
+
+    /* Use nearest-neighbor scaling for textures */
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
 
     simCfg = GUI_SimCfg();
     if (!simCfg) {
