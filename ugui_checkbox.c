@@ -32,7 +32,7 @@ UG_RESULT UG_CheckboxCreate( UG_WINDOW* wnd, UG_CHECKBOX* chb, UG_U8 id, UG_S16 
    chb->align = ALIGN_TOP_LEFT;
    chb->font = UG_GetGUI() != NULL ? (UG_GetGUI()->font) : NULL;
    chb->str = "-";
-   chb->checked = 0; 
+   chb->checked = 0;
 
    /* Initialize standard object parameters */
    obj->update = _UG_CheckboxUpdate;
@@ -472,7 +472,9 @@ static void _UG_CheckboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
    UG_AREA a;
    UG_TEXT txt;
    UG_U8 d;
-   UG_U8 d2;
+   UG_S16 d2;
+   UG_S16 box_ys, box_ye, box_xe;
+   UG_S16 obj_h;
    UG_COLOR c;
 
    /* Get object-specific data */
@@ -497,8 +499,8 @@ static void _UG_CheckboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
          chb->state &= ~CHB_STATE_PRESSED;
          obj->state |= OBJ_STATE_UPDATE;
          obj->event = OBJ_EVENT_RELEASED;
-          
-         chb->checked = !chb->checked; 
+
+         chb->checked = !chb->checked;
       }
       obj->touch_state &= ~OBJ_TOUCH_STATE_CHANGED;
    }
@@ -516,13 +518,23 @@ static void _UG_CheckboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
       obj->a_abs.ye = obj->a_rel.ye + a.ys;
       if ( obj->a_abs.ye > wnd->ye ) return;
       if ( obj->a_abs.xe > wnd->xe ) return;
-       
+
       if ( obj->state & OBJ_STATE_VISIBLE )
       {
          /* 3D or 2D style? */
          d  = ( chb->style & CHB_STYLE_3D )? 3:1;
-         d2 = (UG_GetFontWidth(chb->font) < UG_GetFontHeight(chb->font)) ? UG_GetFontHeight(chb->font) : UG_GetFontWidth(chb->font);
-          
+
+         /* Box size based on font line height */
+         d2 = UG_GetFontLineHeight(chb->font);
+         if (d2 < (UG_S16)UG_GetFontWidth(chb->font))
+            d2 = (UG_S16)UG_GetFontWidth(chb->font);
+
+         /* Object height and vertically centered box */
+         obj_h  = obj->a_abs.ye - obj->a_abs.ys + 1;
+         box_ys = obj->a_abs.ys + (obj_h - (d2 + 2*d)) / 2;
+         box_ye = box_ys + d2 + 2*d - 1;
+         box_xe = obj->a_abs.xs + d2 + 2*d - 1;
+
          /* Full redraw necessary? */
          if ( (obj->state & OBJ_STATE_REDRAW) || (chb->state & CHB_STATE_ALWAYS_REDRAW) )
          {
@@ -548,12 +560,14 @@ static void _UG_CheckboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
                   txt.fc = chb->afc;
                }
             }
-            if ( !(chb->style & CHB_STYLE_NO_FILL) )
-               UG_FillFrame(obj->a_abs.xs+d, obj->a_abs.ys+d, obj->a_abs.xe-d, obj->a_abs.ye-d, txt.bc);
 
-            /* Draw Checkbox text */
-            txt.a.xs = obj->a_abs.xs + d2 + 3*d;
-            txt.a.ys = obj->a_abs.ys + d;
+            /* Fill entire object (industry standard: whole widget reverses) */
+            if ( !(chb->style & CHB_STYLE_NO_FILL) )
+               UG_FillFrame(obj->a_abs.xs, obj->a_abs.ys, obj->a_abs.xe, obj->a_abs.ye, txt.bc);
+
+            /* Draw Checkbox text, vertically centered on the object */
+            txt.a.xs = box_xe + 1 + d;
+            txt.a.ys = obj->a_abs.ys;
             txt.a.xe = obj->a_abs.xe;
             txt.a.ye = obj->a_abs.ye;
             txt.align = chb->align;
@@ -568,26 +582,27 @@ static void _UG_CheckboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
 #endif
          }
 
-         /* Draw Checkbox X */
+         /* Draw Checkbox X, inside the box */
          c = chb->checked ? chb->fc : chb->bc;
-         UG_DrawLine(obj->a_abs.xs+d+1,  obj->a_abs.ys+d,   obj->a_abs.xs+d2+d-1, obj->a_abs.ys+d2+d-2, c);
-         UG_DrawLine(obj->a_abs.xs+d,    obj->a_abs.ys+d,   obj->a_abs.xs+d2+d-1, obj->a_abs.ys+d2+d-1, c);
-         UG_DrawLine(obj->a_abs.xs+d,    obj->a_abs.ys+d+1, obj->a_abs.xs+d2+d-2, obj->a_abs.ys+d2+d-1, c);
 
-         UG_DrawLine(obj->a_abs.xs+d2+d-1,  obj->a_abs.ys+d+1, obj->a_abs.xs+d+1, obj->a_abs.ys+d2+d-1, c);
-         UG_DrawLine(obj->a_abs.xs+d2+d-1,  obj->a_abs.ys+d,   obj->a_abs.xs+d,   obj->a_abs.ys+d2+d-1, c);
-         UG_DrawLine(obj->a_abs.xs+d2+d-2,  obj->a_abs.ys+d,   obj->a_abs.xs+d,   obj->a_abs.ys+d2+d-2, c);
+         UG_DrawLine(box_ys == 0 ? obj->a_abs.xs+d+1 : obj->a_abs.xs+d+1,  box_ys+d,   obj->a_abs.xs+d2+d-1, box_ys+d2+d-2, c);
+         UG_DrawLine(obj->a_abs.xs+d,    box_ys+d,   obj->a_abs.xs+d2+d-1, box_ys+d2+d-1, c);
+         UG_DrawLine(obj->a_abs.xs+d,    box_ys+d+1, obj->a_abs.xs+d2+d-2, box_ys+d2+d-1, c);
 
-         /* Draw Checkbox frame */
+         UG_DrawLine(obj->a_abs.xs+d2+d-1,  box_ys+d+1, obj->a_abs.xs+d+1, box_ys+d2+d-1, c);
+         UG_DrawLine(obj->a_abs.xs+d2+d-1,  box_ys+d,   obj->a_abs.xs+d,   box_ys+d2+d-1, c);
+         UG_DrawLine(obj->a_abs.xs+d2+d-2,  box_ys+d,   obj->a_abs.xs+d,   box_ys+d2+d-2, c);
+
+         /* Draw Checkbox frame, at centered position */
          if ( !(chb->style & CHB_STYLE_NO_BORDERS) )
          {
              if ( chb->style & CHB_STYLE_3D )
              {  /* 3D */
-                _UG_DrawObjectFrame(obj->a_abs.xs,obj->a_abs.ys,obj->a_abs.xs+d2+2*d-1,obj->a_abs.ys+d2+2*d-1, (chb->state&CHB_STATE_PRESSED)?(UG_COLOR*)pal_checkbox_pressed:(UG_COLOR*)pal_checkbox_released);
+                _UG_DrawObjectFrame(obj->a_abs.xs, box_ys, box_xe, box_ye, (chb->state&CHB_STATE_PRESSED)?(UG_COLOR*)pal_checkbox_pressed:(UG_COLOR*)pal_checkbox_released);
              }
              else
              {  /* 2D */
-                 UG_DrawFrame(obj->a_abs.xs,obj->a_abs.ys,obj->a_abs.xs+d2+2*d-1,obj->a_abs.ys+d2+2*d-1,(chb->state&CHB_STATE_PRESSED)?chb->abc:chb->afc);
+                 UG_DrawFrame(obj->a_abs.xs, box_ys, box_xe, box_ye, (chb->state&CHB_STATE_PRESSED)?chb->abc:chb->afc);
              }
          }
       }

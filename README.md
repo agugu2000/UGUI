@@ -7,6 +7,8 @@ This is another form based on https://github.com/deividAlfa/UGUI with modificati
 6. Chinese Font is converted from Source Han Sans CN(Tool:https://github.com/agugu2000/ttf2ugui)
 7. Simulation works normal for CJK characters
 <img src="./ugui.png" width="600">
+<img src="./ugui2.png" width="600">
+<img src="./ugui3.png" width="600">
 
 Simulator:
 - ugui_sim.c / ugui_sim.h: platform independent application layer
