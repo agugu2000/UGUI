@@ -1,11 +1,76 @@
-This is another form based on https://github.com/deividAlfa/UGUI with modifications:
-1. Extended UTF8 support, no longer limited by the original algorithm's 0X8000 high bit flag method, which caused confusion for CJK characters whose unicode fall over 0X8000.
-2. now the single character range for font conversion should be repeated once so that font range will appear in pairs.(unicode 169 has an offset:0x00,0xA9,0x00,0xA9 Flag:0x01,0x00)
-3. Limited modification: The ".is_old_font" code still works,but font array need to update to new structure.
-4. New C structure font array.
-5. Ensure that the str pointer is correctly updated in the _UG_DecodeUTF8 function. This typically involves appropriately incrementing the pointer after identifying the number of bytes in the character.
-6. Chinese Font is converted from SIMSUN2 (Tool:https://github.com/agugu2000/ttf2ugui)
-7. Simulation works normal for CJK characters
+# µGUI (fork) — Extended Font, UTF-8, Shadow
+
+Based on https://github.com/deividAlfa/UGUI with further modifications.
+
+---
+
+This is a fork based on https://github.com/deividAlfa/UGUI with the following features:
+
+### Font
+
+- New font format: tight bounding box + bearing + advance.
+- Old font format still supported.
+- Unified glyph descriptor `UG_GLYPH` (w, h, x_off, y_off, adv, bit_order, data).
+- New format uses codepoints + metrics + data_offsets + data.
+- 1BPP and 8BPP fonts supported.
+- Font metrics: `UG_GetFontWidth`, `UG_GetFontHeight`,
+  `UG_GetFontAscender`, `UG_GetFontDescender`, `UG_GetFontLineHeight`.
+
+### UTF-8
+
+- Extended UTF-8 support, no longer limited by the original 0x8000
+  high-bit flag method, which caused confusion for CJK characters
+  whose Unicode fall over 0x8000.
+  (Note: upstream has already fixed this issue, but the fork this
+  version is based on is older, so this note is kept for clarity.)
+- Handles overlong encodings, invalid continuation bytes, truncated
+  sequences, and codepoints above U+FFFF.
+
+### Text rendering
+
+- Unified renderer `_UG_PutGlyph` for 1BPP and 8BPP.
+- Screen clipping via `_UG_ClipGlyph`.
+- Draw order for 1BPP non-driver path:
+  1. background (if not transparent)
+  2. shadow
+  3. body ink
+- Supports transparency (`UG_FontSetTransparency`).
+
+### Shadow / Outline
+
+- `UG_FontSetShadow(0)` — no shadow (default)
+- `UG_FontSetShadow(1)` — drop shadow (offset +1, +1)
+- `UG_FontSetShadow(2)` — outline (8 directions)
+- Only on 1BPP non-driver path.
+- Driver path has no shadow (design trade-off).
+
+### Objects
+
+- Window, Button, Checkbox, Textbox, Progress, Image.
+- Checkbox box size based on font line height.
+- Checkbox box and text vertically centered in the object.
+
+### Simulator
+
+- SDL2, cross-platform.
+- DPI scaling disabled for 1:1 pixel mapping.
+- Three pages: Control / Styles / Draw.
+- 16x16 RGB565 BMP test pattern.
+- Shadow toggled per page.
+
+### Chinese font
+
+- Converted from SIMSUN2.
+- Tool: https://github.com/agugu2000/ttf2ugui
+
+### Note
+
+Finally, note that I no longer have real hardware, so this is done
+purely out of interest — to implement a complete GUI. Its efficiency
+and memory footprint may no longer be suitable for real hardware.
+
+---
+
 <img src="./ugui.png" width="600">
 <img src="./ugui2.png" width="600">
 <img src="./ugui3.png" width="600">
@@ -30,6 +95,8 @@ Run:
 
 
 ------------------------------------------------------------------------------------------------
+
+deividAlfa:
 
 This is a forked version adding several enhancements:<br>
 - Code reworked using [0x3333](https://github.com/0x3333/UGUI) UGUI fork.
