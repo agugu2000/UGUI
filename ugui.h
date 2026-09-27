@@ -56,7 +56,7 @@ typedef UG_U8                        UG_COLOR;
 /* -- DEFINES                                                                    -- */
 /* -------------------------------------------------------------------------------- */
 /* Internal helpers */
-#define swap(a, b)                                    { UG_U16 t=a; a=b; b=t; }
+#define UGUI_SWAP(a, b)                               { UG_U16 t=a; a=b; b=t; }
 
 /* Sizing helpers */
 #define UGUI_POS(xs, ys, w, h)                        xs, ys, xs+w, ys+h
@@ -515,6 +515,21 @@ void UG_DrawTriangle( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_S16 x3, UG_
 void UG_FillTriangle( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_S16 x3, UG_S16 y3, UG_COLOR c );
 void UG_PutString( UG_S16 x, UG_S16 y,  char* str );
 void UG_PutChar( UG_CHAR chr, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COLOR bc );
+typedef struct
+{
+    UG_COLOR color;
+    UG_U8    valid;
+} UG_GlyphColor;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+extern UG_GlyphColor (*UG_GlyphColorCallback)( UG_CHAR cp, UG_COLOR default_fc );
+
+#ifdef __cplusplus
+}
+#endif
 #if defined(UGUI_USE_CONSOLE)
 void UG_ConsolePutString( char* str );
 void UG_ConsoleSetArea( UG_S16 xs, UG_S16 ys, UG_S16 xe, UG_S16 ye );
@@ -564,6 +579,7 @@ void _UG_SendObjectPrerenderEvent(UG_WINDOW *wnd,UG_OBJECT *obj);
 void _UG_SendObjectPostrenderEvent(UG_WINDOW *wnd,UG_OBJECT *obj);
 #endif
 UG_U32 _UG_ConvertRGB565ToRGB888(UG_U16 c);
+UG_U16 _UG_ConvertRGB888ToRGB565(UG_U32 c);
 
 /* Glyph lookup (replaces _UG_GetCharData) */
 UG_S16 _UG_GetGlyph( UG_CHAR encoding, UG_GLYPH *g );

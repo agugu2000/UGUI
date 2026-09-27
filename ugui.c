@@ -17,6 +17,8 @@
 #include "ugui.h"
 #include <stdint.h>
 
+UG_GlyphColor (*UG_GlyphColorCallback)( UG_CHAR cp, UG_COLOR default_fc ) = NULL;
+
 /* Static functions */
 static UG_RESULT _UG_WindowDrawTitle( UG_WINDOW* wnd );
 static void _UG_WindowUpdate( UG_WINDOW* wnd );
@@ -44,6 +46,35 @@ static UG_U32 _ru32(const UG_U8 *p) {
 static const UG_COLOR pal_window[] = {
     C_PAL_WINDOW
 };
+
+static UG_COLOR _UG_BlendColor(UG_COLOR fg, UG_COLOR bg, UG_U8 a)
+{
+#if defined(UGUI_USE_COLOR_RGB888)
+    {
+        UG_U32 fr = (fg >> 16) & 0xFF, fgc = (fg >> 8) & 0xFF, fb = fg & 0xFF;
+        UG_U32 br = (bg >> 16) & 0xFF, bgc = (bg >> 8) & 0xFF, bb = bg & 0xFF;
+        UG_U32 r = (fr * a + br * (256 - a)) >> 8;
+        UG_U32 g = (fgc * a + bgc * (256 - a)) >> 8;
+        UG_U32 b = (fb * a + bb * (256 - a)) >> 8;
+        return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    }
+#elif defined(UGUI_USE_COLOR_RGB565)
+    {
+        UG_U32 fr = (fg >> 11) & 0x1F, fgc = (fg >> 5) & 0x3F, fb = fg & 0x1F;
+        UG_U32 br = (bg >> 11) & 0x1F, bgc = (bg >> 5) & 0x3F, bb = bg & 0x1F;
+        UG_U32 r = (fr * a + br * (256 - a)) >> 8;
+        UG_U32 g = (fgc * a + bgc * (256 - a)) >> 8;
+        UG_U32 b = (fb * a + bb * (256 - a)) >> 8;
+        return (UG_U16)(((r & 0x1F) << 11) | ((g & 0x3F) << 5) | (b & 0x1F));
+    }
+#else /* BW */
+    {
+        UG_U32 fv = fg & 0xFF, bv = bg & 0xFF;
+        UG_U32 v = (fv * a + bv * (256 - a)) >> 8;
+        return (UG_U8)(v & 0xFF);
+    }
+#endif
+}
 
 /* Pointer to the gui */
 static UG_GUI* gui;
@@ -171,9 +202,9 @@ void UG_FillFrame( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_COLOR c )
    UG_S16 n,m;
 
    if ( x2 < x1 )
-     swap(x1,x2);
+     UGUI_SWAP(x1,x2);
    if ( y2 < y1 )
-     swap(y1,y2);
+     UGUI_SWAP(y1,y2);
 
    /* Is hardware acceleration available? */
    if ( gui->driver[DRIVER_FILL_FRAME].state & DRIVER_ENABLED )
@@ -195,9 +226,9 @@ void UG_FillRoundFrame( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_S16 r, UG
    UG_S16  x,y,xd;
 
    if ( x2 < x1 )
-     swap(x1,x2);
+     UGUI_SWAP(x1,x2);
    if ( y2 < y1 )
-     swap(y1,y2);
+     UGUI_SWAP(y1,y2);
 
    if ( r<=0 ) return;
 
@@ -237,9 +268,9 @@ void UG_DrawMesh( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_U16 spacing, UG
    UG_U16 p;
 
    if ( x2 < x1 )
-     swap(x1,x2);
+     UGUI_SWAP(x1,x2);
    if ( y2 < y1 )
-     swap(y1,y2);
+     UGUI_SWAP(y1,y2);
 
    for( p=y1; p<y2; p+=spacing )
    {
@@ -271,9 +302,9 @@ void UG_DrawRoundFrame( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_S16 r, UG
    }
 
    if ( x2 < x1 )
-     swap(x1,x2);
+     UGUI_SWAP(x1,x2);
    if ( y2 < y1 )
-     swap(y1,y2);
+     UGUI_SWAP(y1,y2);
    if(r) r++;               // Fix for corner radius looking weird, this makes the same outline as UG_FillRoundFrame
    if ( r > x2 ) return;
    if ( r > y2 ) return;
@@ -480,13 +511,13 @@ void UG_FillTriangle( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_S16 x3, UG_
 
   /* Sort coordinates by Y order (y3 >= y2 >= y1) */
   if (y1 > y2) {
-    swap(y1, y2); swap(x1, x2);
+    UGUI_SWAP(y1, y2); UGUI_SWAP(x1, x2);
   }
   if (y2 > y3) {
-    swap(y3, y2); swap(x3, x2);
+    UGUI_SWAP(y3, y2); UGUI_SWAP(x3, x2);
   }
   if (y1 > y2) {
-    swap(y1, y2); swap(x1, x2);
+    UGUI_SWAP(y1, y2); UGUI_SWAP(x1, x2);
   }
 
   /* Handle awkward all-on-same-line case as its own thing */
@@ -539,7 +570,7 @@ void UG_FillTriangle( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_S16 x3, UG_
        b = x1 + (x3 - x1) * (y - y1) / (y3 - y1);
        */
     if (a > b) {
-      swap(a, b);
+      UGUI_SWAP(a, b);
     }
     UG_DrawLine(a, y, b + 1, y, c);
   }
@@ -559,7 +590,7 @@ void UG_FillTriangle( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_S16 x3, UG_
        b = x1 + (x3 - x1) * (y - y1) / (y3 - y1);
        */
     if (a > b) {
-      swap(a, b);
+      UGUI_SWAP(a, b);
     }
     UG_DrawLine(a, y, b + 1, y, c);
   }
@@ -616,7 +647,14 @@ void UG_PutString( UG_S16 x, UG_S16 y, char* str )
          yp += line_h + gui->char_v_space;
       }
 
-      _UG_PutGlyph(&g, xp, yp, gui->fore_color, gui->back_color, gui->transparent_font);
+      {
+         UG_COLOR fc = gui->fore_color;
+         if (UG_GlyphColorCallback) {
+            UG_GlyphColor r = UG_GlyphColorCallback(chr, fc);
+            if (r.valid) fc = r.color;
+         }
+         _UG_PutGlyph(&g, xp, yp, fc, gui->back_color, gui->transparent_font);
+      }
 
       xp += g.adv + gui->char_h_space;
    }
@@ -688,7 +726,14 @@ void UG_ConsolePutString( char* str )
       if (gui->currentFont.format == UG_FONT_FMT_NEW) {
          y_draw += (UG_S16)gui->currentFont.ascender;
       }
-      _UG_PutGlyph(&g, gui->console.x_pos, y_draw, gui->console.fore_color, gui->console.back_color, gui->transparent_font);
+      {
+         UG_COLOR fc = gui->console.fore_color;
+         if (UG_GlyphColorCallback) {
+            UG_GlyphColor r = UG_GlyphColorCallback(chr, fc);
+            if (r.valid) fc = r.color;
+         }
+         _UG_PutGlyph(&g, gui->console.x_pos, y_draw, fc, gui->console.back_color, gui->transparent_font);
+      }
    }
    if((gui->driver[DRIVER_FILL_AREA].state & DRIVER_ENABLED))
      ((void*(*)(UG_S16, UG_S16, UG_S16, UG_S16))gui->driver[DRIVER_FILL_AREA].driver)(-1,-1,-1,-1);
@@ -1162,10 +1207,7 @@ static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COL
             }
 
             if (gui->shadow_font) {
-                UG_COLOR shadow_color =
-                    ((((fc & 0xFF)   * 64 + (bc & 0xFF)   * 192) >> 8) & 0xFF)   |
-                    ((((fc & 0xFF00) * 64 + (bc & 0xFF00) * 192) >> 8) & 0xFF00) |
-                    ((((fc & 0xFF0000) * 64 + (bc & 0xFF0000) * 192) >> 8) & 0xFF0000);
+                UG_COLOR shadow_color = _UG_BlendColor(fc, bc, 64);
 
                 if (gui->shadow_font == 1) {
                     /* Drop shadow: single offset (+1, +1) */
@@ -1213,10 +1255,7 @@ static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COL
                     UG_S16 u = c.ox + i;
                     UG_U8 b = row[u];
                     if (trans && b == 0) continue;
-                    UG_COLOR color =
-                        ((((fc & 0xFF) * b + (bc & 0xFF) * (256 - b)) >> 8) & 0xFF) |
-                        ((((fc & 0xFF00) * b + (bc & 0xFF00) * (256 - b)) >> 8) & 0xFF00) |
-                        ((((fc & 0xFF0000) * b + (bc & 0xFF0000) * (256 - b)) >> 8) & 0xFF0000);
+                    UG_COLOR color = _UG_BlendColor(fc, bc, b);
                     if (driver) push_pixels(1, color);
                     else gui->device->pset(c.X0 + i, c.Y0 + j, color);
                 }
@@ -1519,7 +1558,14 @@ void _UG_PutText(UG_TEXT* txt)
              xp += adv + char_h_space;
              continue;
          }
-         _UG_PutGlyph(&g,xp,yp,txt->fc,txt->bc,gui->transparent_font);
+         {
+            UG_COLOR fc = txt->fc;
+            if (UG_GlyphColorCallback) {
+               UG_GlyphColor r = UG_GlyphColorCallback(chr, fc);
+               if (r.valid) fc = r.color;
+            }
+            _UG_PutGlyph(&g, xp, yp, fc, txt->bc, gui->transparent_font);
+         }
          xp += g.adv + char_h_space;
       }
       yp += char_height + char_v_space;
@@ -1651,6 +1697,17 @@ UG_U32 _UG_ConvertRGB565ToRGB888(UG_U16 c)
    b = (b << 3) | (b >> 2);
 
    return (r | g | b);
+}
+
+UG_U16 _UG_ConvertRGB888ToRGB565(UG_U32 c)
+{
+   UG_U32 r, g, b;
+
+   r = (c >> 16) & 0xFF;
+   g = (c >> 8)  & 0xFF;
+   b =  c        & 0xFF;
+
+   return (UG_U16)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
 }
 
 /* -------------------------------------------------------------------------------- */
