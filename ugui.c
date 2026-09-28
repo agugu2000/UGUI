@@ -16,8 +16,7 @@
 /* -------------------------------------------------------------------------------- */
 #include "ugui.h"
 #include <stdint.h>
-
-UG_GlyphColor (*UG_GlyphColorCallback)( UG_CHAR cp, UG_COLOR default_fc ) = NULL;
+#include <string.h>
 
 /* Static functions */
 static UG_RESULT _UG_WindowDrawTitle( UG_WINDOW* wnd );
@@ -47,6 +46,7 @@ static const UG_COLOR pal_window[] = {
     C_PAL_WINDOW
 };
 
+static UG_GUI* gui;
 static UG_COLOR _UG_BlendColor(UG_COLOR fg, UG_COLOR bg, UG_U8 a)
 {
 #if defined(UGUI_USE_COLOR_RGB888)
@@ -76,9 +76,116 @@ static UG_COLOR _UG_BlendColor(UG_COLOR fg, UG_COLOR bg, UG_U8 a)
 #endif
 }
 
-/* Pointer to the gui */
-static UG_GUI* gui;
+static UG_S8 _UG_HexVal( UG_U8 c )
+{
+    if (c >= '0' && c <= '9') return (UG_S8)(c - '0');
+    if (c >= 'A' && c <= 'F') return (UG_S8)(c - 'A' + 10);
+    if (c >= 'a' && c <= 'f') return (UG_S8)(c - 'a' + 10);
+    return -1;
+}
 
+static UG_COLOR _UG_RGB888ToColor( UG_U32 rgb )
+{
+#if defined(UGUI_USE_COLOR_RGB888)
+    return (UG_COLOR)rgb;
+#elif defined(UGUI_USE_COLOR_RGB565)
+    return _UG_ConvertRGB888ToRGB565(rgb);
+#else /* BW */
+    {
+        UG_U32 r = (rgb >> 16) & 0xFF;
+        UG_U32 g = (rgb >> 8)  & 0xFF;
+        UG_U32 b =  rgb        & 0xFF;
+        return (UG_U8)(((r * 299 + g * 587 + b * 114) / 1000) >= 128 ? 0xFF : 0x00);
+    }
+#endif
+}
+
+/* Returns 1 if the font uses the old (single-byte) format. */
+static UG_U8 _UG_FontIsOld( UG_FONT* font )
+{
+    if (font == NULL) return 0;
+    return (((const UG_U8*)font)[0] & 0x80) ? 1 : 0;
+}
+
+/*
+ * Fetch the next display unit from *str, honoring inline color tags.
+ *   returns 0  : end of string
+ *   returns >0 : codepoint
+ *   returns -1 : a tag was consumed; caller should continue the loop
+ *
+ * *cur_fc is the current foreground color. Tags update it in place.
+ * def_fc is the default color, used by the {#} tag.
+ *
+ * Byte consumption matches _UG_DecodeUTF8() exactly so that the renderer's
+ * character index stays in sync with UG_DecodeText()'s character index.
+ */
+static UG_S32 _UG_NextCharEx( char** str, UG_COLOR* cur_fc, UG_COLOR def_fc )
+{
+    const UG_U8* p = (const UG_U8*)*str;
+
+    if (p[0] == '{')
+    {
+        /* {{ -> literal '{' */
+        if (p[1] == '{')
+        {
+            *str = (char*)(p + 2);
+            return (UG_S32)'{';
+        }
+        /* {#...} */
+        if (p[1] == '#')
+        {
+            /* {#} -> restore default fg */
+            if (p[2] == '}')
+            {
+                *cur_fc = def_fc;
+                *str = (char*)(p + 3);
+                return -1;
+            }
+            /* {#RRGGBB} -> set fg */
+            {
+                UG_U32 rgb = 0;
+                UG_S8 v;
+                int k;
+                UG_U8 ok = 1;
+                for (k = 0; k < 6; k++)
+                {
+                    v = _UG_HexVal(p[2 + k]);
+                    if (v < 0) { ok = 0; break; }
+                    rgb = (rgb << 4) | (UG_U32)v;
+                }
+                if (ok && p[8] == '}')
+                {
+                    *cur_fc = _UG_RGB888ToColor(rgb);
+                    *str = (char*)(p + 9);
+                    return -1;
+                }
+            }
+            /* fall through: invalid tag, '{' becomes a literal below */
+        }
+        /* not a valid tag: emit '{' as literal, consume 1 byte */
+        *str = (char*)(p + 1);
+        return (UG_S32)'{';
+    }
+
+    if (p[0] == 0) return 0;
+
+#ifdef UGUI_USE_UTF8
+    if (!gui->currentFont.is_old_font)
+    {
+        /* _UG_DecodeUTF8 returns UG_U16; an invalid byte yields (UG_U16)-1,
+         * which becomes 0xFFFF here and is handled as a missing glyph by
+         * the caller, identical to the pre-change behavior. */
+        return (UG_S32)(UG_U16)_UG_DecodeUTF8(str);
+    }
+#endif
+    {
+        UG_CHAR ch = (UG_U8)p[0];
+        *str = (char*)(p + 1);
+        return (UG_S32)ch;
+    }
+}
+
+/* Pointer to the gui */
 UG_S16 UG_Init( UG_GUI* g, UG_DEVICE *device )
 {
    UG_U8 i;
@@ -91,6 +198,7 @@ UG_S16 UG_Init( UG_GUI* g, UG_DEVICE *device )
    g->console.y_end = g->device->y_dim - g->console.x_start-1;
    g->console.x_pos = g->console.x_end;
    g->console.y_pos = g->console.y_end;
+   g->console.cur_fc = C_BLACK;
 #endif
    g->char_h_space = 1;
    g->char_v_space = 1;
@@ -602,6 +710,8 @@ void UG_PutString( UG_S16 x, UG_S16 y, char* str )
    UG_CHAR chr;
    UG_GLYPH g;
    UG_S16 line_h;
+   UG_COLOR cur_fc;
+   UG_COLOR def_fc;
 
    _UG_FontSelect(gui->font);
 
@@ -615,20 +725,16 @@ void UG_PutString( UG_S16 x, UG_S16 y, char* str )
    if (gui->currentFont.format == UG_FONT_FMT_NEW) {
       yp += (UG_S16)gui->currentFont.ascender;   /* line top -> baseline */
    }
-   /* Old format: keep yp = y (line top), y_off = 0 */
 
-   while ( *str != 0 )
+   def_fc = gui->fore_color;
+   cur_fc = def_fc;
+
+   while ( 1 )
    {
-      #ifdef UGUI_USE_UTF8
-      if(! gui->currentFont.is_old_font){
-         chr = _UG_DecodeUTF8(&str);
-      }
-      else{
-         chr = (UG_U8)*str++;
-      }
-      #else
-      chr = *str++;
-      #endif
+      UG_S32 ch = _UG_NextCharEx(&str, &cur_fc, def_fc);
+      if (ch == 0) break;
+      if (ch < 0) continue;
+      chr = (UG_CHAR)ch;
 
       if ( chr == '\n' )
       {
@@ -647,14 +753,7 @@ void UG_PutString( UG_S16 x, UG_S16 y, char* str )
          yp += line_h + gui->char_v_space;
       }
 
-      {
-         UG_COLOR fc = gui->fore_color;
-         if (UG_GlyphColorCallback) {
-            UG_GlyphColor r = UG_GlyphColorCallback(chr, fc);
-            if (r.valid) fc = r.color;
-         }
-         _UG_PutGlyph(&g, xp, yp, fc, gui->back_color, gui->transparent_font);
-      }
+      _UG_PutGlyph(&g, xp, yp, cur_fc, gui->back_color, gui->transparent_font);
 
       xp += g.adv + gui->char_h_space;
    }
@@ -679,23 +778,19 @@ void UG_ConsolePutString( char* str )
    UG_S16 y_draw;
 
    _UG_FontSelect(gui->font);
-   /* Industry standard: line height = ascender - descender */
    line_h = (UG_S16)gui->currentFont.ascender
           - (UG_S16)gui->currentFont.descender;
    if (line_h <= 0) line_h = 1;
 
-   while ( *str != 0 )
+   gui->console.cur_fc = gui->console.fore_color;
+
+   while ( 1 )
    {
-      #ifdef UGUI_USE_UTF8
-      if(! gui->currentFont.is_old_font){
-        chr = _UG_DecodeUTF8(&str);
-      }
-      else{
-        chr = (UG_U8)*str++;
-      }
-      #else
-      chr = *str++;
-      #endif
+      UG_S32 ch = _UG_NextCharEx(&str, &gui->console.cur_fc, gui->console.fore_color);
+      if (ch == 0) break;
+      if (ch < 0) continue;
+      chr = (UG_CHAR)ch;
+
       if ( chr == '\n' )
       {
          gui->console.x_pos = gui->device->x_dim;
@@ -726,14 +821,9 @@ void UG_ConsolePutString( char* str )
       if (gui->currentFont.format == UG_FONT_FMT_NEW) {
          y_draw += (UG_S16)gui->currentFont.ascender;
       }
-      {
-         UG_COLOR fc = gui->console.fore_color;
-         if (UG_GlyphColorCallback) {
-            UG_GlyphColor r = UG_GlyphColorCallback(chr, fc);
-            if (r.valid) fc = r.color;
-         }
-         _UG_PutGlyph(&g, gui->console.x_pos, y_draw, fc, gui->console.back_color, gui->transparent_font);
-      }
+      _UG_PutGlyph(&g, gui->console.x_pos, y_draw,
+                   gui->console.cur_fc, gui->console.back_color,
+                   gui->transparent_font);
    }
    if((gui->driver[DRIVER_FILL_AREA].state & DRIVER_ENABLED))
      ((void*(*)(UG_S16, UG_S16, UG_S16, UG_S16))gui->driver[DRIVER_FILL_AREA].driver)(-1,-1,-1,-1);
@@ -750,11 +840,18 @@ void UG_ConsoleSetArea( UG_S16 xs, UG_S16 ys, UG_S16 xe, UG_S16 ye )
 void UG_ConsoleSetForecolor( UG_COLOR c )
 {
    gui->console.fore_color = c;
+   gui->console.cur_fc = c;
 }
 
 void UG_ConsoleSetBackcolor( UG_COLOR c )
 {
    gui->console.back_color = c;
+}
+
+void UG_ConsoleReset( void )
+{
+   gui->console.x_pos = gui->console.x_start;
+   gui->console.y_pos = gui->console.y_start;
 }
 #endif
 
@@ -1459,24 +1556,42 @@ void _UG_PutText(UG_TEXT* txt)
    UG_CHAR chr;
    char* str = txt->str;
    char* c = str;
+   /* markup = 1 : str may contain inline tags, parse per frame
+    * markup = 0 : str is plain text, runs[] drives colors (zero parse) */
+   UG_U8  markup = (txt->runs == NULL) ? 1 : 0;
 
+   /* Cross-line persistent state. For the markup path only cur_fc is used;
+    * for the runs path char_index and run_cur are also used. */
+   UG_COLOR cur_fc = txt->fc;
+   UG_U16 char_index = 0;
+   UG_U16 run_cur = 0;
+
+   /* ---- Count lines (rc) ---- */
    rc=1;
    c=str;
-
-   while (1)
-   {
-     #ifdef UGUI_USE_UTF8
-     if(! gui->currentFont.is_old_font){
-       chr = _UG_DecodeUTF8(&c);
-     }
-     else{
-       chr = (UG_U8)*c++;
-     }
-     #else
-     chr = *c++;
-     #endif
-     if(!chr) break;
-     if ( chr == '\n' ) rc++;
+   if (markup) {
+      UG_COLOR tmp = txt->fc;
+      while (1) {
+         UG_S32 ch = _UG_NextCharEx(&c, &tmp, txt->fc);
+         if (ch == 0) break;
+         if (ch < 0) continue;
+         if ((UG_CHAR)ch == '\n') rc++;
+      }
+   } else {
+      while (1) {
+         #ifdef UGUI_USE_UTF8
+         if(! gui->currentFont.is_old_font){
+           chr = _UG_DecodeUTF8(&c);
+         }
+         else{
+           chr = (UG_U8)*c++;
+         }
+         #else
+         chr = *c++;
+         #endif
+         if(!chr) break;
+         if ( chr == '\n' ) rc++;
+      }
    }
 
    yp = 0;
@@ -1501,30 +1616,49 @@ void _UG_PutText(UG_TEXT* txt)
    {
       UG_U16 wl = 0;
       c=str;
-      while(1)
-      {
-        #ifdef UGUI_USE_UTF8
-        if(! gui->currentFont.is_old_font){
-          chr = _UG_DecodeUTF8(&c);
-        }
-        else{
-          chr = (UG_U8)*c++;
-        }
-        #else
-        chr = *c++;
-        #endif
-        if( chr == 0 || chr == '\n'){
-          break;
-        }
-         if (_UG_GetGlyph(chr, &g) != 0) {
-             UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
-             if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
-             wl += adv + char_h_space;
-             continue;
+      /* ---- Measure line width (wl) ---- */
+      if (markup) {
+         UG_COLOR tmp = txt->fc;
+         while(1)
+         {
+            UG_S32 ch = _UG_NextCharEx(&c, &tmp, txt->fc);
+            if (ch == 0) break;
+            if (ch < 0) continue;
+            chr = (UG_CHAR)ch;
+            if (chr == '\n') break;
+            if (_UG_GetGlyph(chr, &g) != 0) {
+                UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
+                if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
+                wl += adv + char_h_space;
+                continue;
+            }
+            wl += g.adv + char_h_space;
          }
-         wl += g.adv + char_h_space;
+      } else {
+         while(1)
+         {
+           #ifdef UGUI_USE_UTF8
+           if(! gui->currentFont.is_old_font){
+             chr = _UG_DecodeUTF8(&c);
+           }
+           else{
+             chr = (UG_U8)*c++;
+           }
+           #else
+           chr = *c++;
+           #endif
+           if( chr == 0 || chr == '\n'){ break; }
+           if (_UG_GetGlyph(chr, &g) != 0) {
+               UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
+               if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
+               wl += adv + char_h_space;
+               continue;
+           }
+           wl += g.adv + char_h_space;
+         }
       }
-      wl -= char_h_space;
+      if (wl >= (UG_U16)char_h_space) wl -= (UG_U16)char_h_space;
+      else                             wl = 0;
 
       xp = xe - xs + 1;
       xp -= wl;
@@ -1534,39 +1668,67 @@ void _UG_PutText(UG_TEXT* txt)
       else if ( align & ALIGN_H_CENTER ) xp >>= 1;
       xp += xs;
 
-
-      while(1){
-         #ifdef UGUI_USE_UTF8
-         if(! gui->currentFont.is_old_font){
-           chr = _UG_DecodeUTF8(&str);
-         }
-         else{
-           chr = (UG_U8)*str++;
-         }
-         #else
-         chr = *str++;
-         #endif
-         if ( chr == 0 ){
-           return;
-         }
-         else if(chr=='\n'){
-           break;
-         }
-         if (_UG_GetGlyph(chr, &g) != 0) {
-             UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
-             if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
-             xp += adv + char_h_space;
-             continue;
-         }
-         {
-            UG_COLOR fc = txt->fc;
-            if (UG_GlyphColorCallback) {
-               UG_GlyphColor r = UG_GlyphColorCallback(chr, fc);
-               if (r.valid) fc = r.color;
+      /* ---- Render current line ---- */
+      if (markup) {
+         /* Per-frame tag parse path. cur_fc persists across lines. */
+         while(1) {
+            UG_S32 ch = _UG_NextCharEx(&str, &cur_fc, txt->fc);
+            if (ch == 0) return;
+            if (ch < 0) continue;
+            chr = (UG_CHAR)ch;
+            if (chr == '\n') break;
+            if (_UG_GetGlyph(chr, &g) != 0) {
+                UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
+                if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
+                xp += adv + char_h_space;
+                continue;
             }
-            _UG_PutGlyph(&g, xp, yp, fc, txt->bc, gui->transparent_font);
+            _UG_PutGlyph(&g, xp, yp, cur_fc, txt->bc, gui->transparent_font);
+            xp += g.adv + char_h_space;
          }
-         xp += g.adv + char_h_space;
+      } else {
+         /* Pre-decoded path: plain text + runs[], zero parse.
+          * char_index / run_cur persist across lines. */
+         UG_COLOR line_fc = txt->fc;
+         while(1) {
+            #ifdef UGUI_USE_UTF8
+            if(! gui->currentFont.is_old_font){
+              chr = _UG_DecodeUTF8(&str);
+            }
+            else{
+              chr = (UG_U8)*str++;
+            }
+            #else
+            chr = *str++;
+            #endif
+            if ( chr == 0 ) return;
+            if (chr == '\n') { char_index++; break; }
+
+            /* Advance run cursor past all finished runs. */
+            while (run_cur < txt->run_count &&
+                   char_index >= txt->runs[run_cur].end) {
+               run_cur++;
+            }
+            /* Pick color: run color if char falls inside current run,
+             * otherwise default txt->fc. */
+            if (run_cur < txt->run_count &&
+                char_index >= txt->runs[run_cur].start) {
+               line_fc = txt->runs[run_cur].fc;
+            } else {
+               line_fc = txt->fc;
+            }
+
+            if (_UG_GetGlyph(chr, &g) != 0) {
+                UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
+                if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
+                xp += adv + char_h_space;
+                char_index++;
+                continue;
+            }
+            _UG_PutGlyph(&g, xp, yp, line_fc, txt->bc, gui->transparent_font);
+            xp += g.adv + char_h_space;
+            char_index++;
+         }
       }
       yp += char_height + char_v_space;
    }
@@ -1708,6 +1870,145 @@ UG_U16 _UG_ConvertRGB888ToRGB565(UG_U32 c)
    b =  c        & 0xFF;
 
    return (UG_U16)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+}
+
+UG_RESULT UG_DecodeText( const char* in,
+                         UG_FONT* font,
+                         char* clean, UG_U16 clean_cap,
+                         UG_ColorRun* runs, UG_U16 run_cap,
+                         char** out_clean, UG_U16* out_clean_len,
+                         UG_ColorRun** out_runs, UG_U16* out_run_count )
+{
+    UG_U16 wi = 0;         /* byte write index into clean */
+    UG_U16 ci = 0;         /* character index */
+    UG_U16 ri = 0;         /* run count */
+    UG_U16 run_start = 0;
+    UG_COLOR cur = 0;
+    UG_U8 in_color = 0;
+    UG_U8 is_old;
+
+    if (in == NULL || clean == NULL || clean_cap == 0) return UG_RESULT_FAIL;
+    if (out_clean == NULL || out_clean_len == NULL ||
+        out_runs == NULL || out_run_count == NULL) return UG_RESULT_FAIL;
+
+    /* Byte-mode is decided by the target font, NOT by gui->currentFont.
+     * This keeps decoding independent of any global font-selection state. */
+    is_old = _UG_FontIsOld(font);
+    (void)is_old;
+
+    while (*in)
+    {
+        if (in[0] == '{')
+        {
+            /* {{ -> literal '{' */
+            if (in[1] == '{')
+            {
+                if (wi + 1 >= clean_cap) return UG_RESULT_FAIL;
+                clean[wi++] = '{';
+                ci++;
+                in += 2;
+                continue;
+            }
+            if (in[1] == '#')
+            {
+                /* {#} -> restore default */
+                if (in[2] == '}')
+                {
+                    if (in_color && runs != NULL)
+                    {
+                        if (ri >= run_cap) return UG_RESULT_FAIL;
+                        runs[ri].start = run_start;
+                        runs[ri].end   = ci;
+                        runs[ri].fc    = cur;
+                        ri++;
+                    }
+                    in_color = 0;
+                    in += 3;
+                    continue;
+                }
+                /* {#RRGGBB} */
+                {
+                    UG_U32 rgb = 0;
+                    UG_S8 v;
+                    int k;
+                    UG_U8 ok = 1;
+                    for (k = 0; k < 6; k++)
+                    {
+                        v = _UG_HexVal((UG_U8)in[2 + k]);
+                        if (v < 0) { ok = 0; break; }
+                        rgb = (rgb << 4) | (UG_U32)v;
+                    }
+                    if (ok && in[8] == '}')
+                    {
+                        if (in_color && runs != NULL)
+                        {
+                            if (ri >= run_cap) return UG_RESULT_FAIL;
+                            runs[ri].start = run_start;
+                            runs[ri].end   = ci;
+                            runs[ri].fc    = cur;
+                            ri++;
+                        }
+                        cur = _UG_RGB888ToColor(rgb);
+                        run_start = ci;
+                        in_color = 1;
+                        in += 9;
+                        continue;
+                    }
+                }
+                /* fall through: invalid tag */
+            }
+            /* invalid tag: emit '{' as literal, consume 1 byte */
+            if (wi + 1 >= clean_cap) return UG_RESULT_FAIL;
+            clean[wi++] = '{';
+            ci++;
+            in += 1;
+            continue;
+        }
+
+        /* Normal character. Byte consumption must match the renderer.
+         * The renderer decides UTF-8 vs single-byte from the font it
+         * renders with, which is the same font passed here. */
+        {
+            char* before = (char*)in;
+            char* after;
+            UG_U16 nb;
+#ifdef UGUI_USE_UTF8
+            if (!is_old) {
+                after = (char*)in;
+                (void)_UG_DecodeUTF8(&after);
+            } else
+#endif
+            {
+                after = (char*)in + 1;
+            }
+            nb = (UG_U16)(after - before);
+            if (wi + nb >= clean_cap) return UG_RESULT_FAIL;
+            {
+                UG_U16 k;
+                for (k = 0; k < nb; k++) clean[wi++] = before[k];
+            }
+            ci++;
+            in = (const char*)after;
+        }
+    }
+
+    if (in_color && runs != NULL)
+    {
+        if (ri >= run_cap) return UG_RESULT_FAIL;
+        runs[ri].start = run_start;
+        runs[ri].end   = ci;
+        runs[ri].fc    = cur;
+        ri++;
+    }
+
+    if (wi >= clean_cap) return UG_RESULT_FAIL;
+    clean[wi] = 0;
+
+    *out_clean     = clean;
+    *out_clean_len = ci;
+    *out_runs      = runs;
+    *out_run_count = ri;
+    return UG_RESULT_OK;
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -2498,6 +2799,8 @@ static UG_RESULT _UG_WindowDrawTitle( UG_WINDOW* wnd )
 {
    UG_TEXT txt;
    UG_S16 xs,ys,xe,ye;
+
+   memset(&txt, 0, sizeof(txt));
 
    if ( (wnd != NULL) && (wnd->state & WND_STATE_VALID) )
    {

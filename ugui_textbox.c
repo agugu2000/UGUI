@@ -1,4 +1,5 @@
 #include "ugui_textbox.h"
+#include <string.h>
 
 /* -------------------------------------------------------------------------------- */
 /* -- Textbox FUNCTIONS                                                          -- */
@@ -295,6 +296,8 @@ static void _UG_TextboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
    UG_TEXTBOX* txb;
    UG_AREA a;
    UG_TEXT txt;
+
+   memset(&txt, 0, sizeof(txt));
 
    /* Get object-specific data */
    txb = (UG_TEXTBOX*)(obj->data);

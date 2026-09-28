@@ -234,6 +234,31 @@ typedef struct
 } UG_AREA;
 
 /* Text structure */
+/* -------------------------------------------------------------------------------- */
+/* -- RICH TEXT COLOR RUN                                                        -- */
+/* -------------------------------------------------------------------------------- */
+/*
+ * A color run describes a contiguous range of characters in a plain-text
+ * string that share the same foreground color.
+ *   start/end are CHARACTER indices (not byte indices), end is exclusive.
+ *   Runs must be sorted by start, non-overlapping.
+ *   Characters not covered by any run use UG_TEXT.fc (the default color).
+ *
+ * Inline color tag syntax accepted by the renderer and UG_DecodeText():
+ *   {#RRGGBB}   set foreground color, persists until changed
+ *   {#}         restore default foreground color, persists
+ *   {{          literal '{'
+ *
+ * Tags are only recognized when runs == NULL. When runs != NULL the string
+ * is treated as plain text and tags are NOT parsed.
+ */
+typedef struct
+{
+    UG_U16   start;   /* inclusive character index */
+    UG_U16   end;     /* exclusive character index */
+    UG_COLOR fc;      /* foreground color */
+} UG_ColorRun;
+
 typedef struct
 {
    char* str;
@@ -244,6 +269,11 @@ typedef struct
    UG_U8 align;
    UG_S16 h_space;
    UG_S16 v_space;
+   /* Optional pre-decoded color runs.
+    * NULL  -> str may contain inline tags; renderer parses them per frame.
+    * !NULL -> str is plain text; runs[] drives colors (zero parsing). */
+   UG_ColorRun* runs;
+   UG_U16       run_count;
 } UG_TEXT;
 
 /* -------------------------------------------------------------------------------- */
@@ -468,6 +498,7 @@ typedef struct
       UG_S16 y_end;
       UG_COLOR fore_color;
       UG_COLOR back_color;
+      UG_COLOR cur_fc;   /* current effective fg, honors inline tags */
    } console;
    #endif
    UG_FONT *font;
@@ -515,26 +546,12 @@ void UG_DrawTriangle( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_S16 x3, UG_
 void UG_FillTriangle( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_S16 x3, UG_S16 y3, UG_COLOR c );
 void UG_PutString( UG_S16 x, UG_S16 y,  char* str );
 void UG_PutChar( UG_CHAR chr, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COLOR bc );
-typedef struct
-{
-    UG_COLOR color;
-    UG_U8    valid;
-} UG_GlyphColor;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-extern UG_GlyphColor (*UG_GlyphColorCallback)( UG_CHAR cp, UG_COLOR default_fc );
-
-#ifdef __cplusplus
-}
-#endif
 #if defined(UGUI_USE_CONSOLE)
 void UG_ConsolePutString( char* str );
 void UG_ConsoleSetArea( UG_S16 xs, UG_S16 ys, UG_S16 xe, UG_S16 ye );
 void UG_ConsoleSetForecolor( UG_COLOR c );
 void UG_ConsoleSetBackcolor( UG_COLOR c );
+void UG_ConsoleReset( void );
 #endif
 void UG_SetForecolor( UG_COLOR c );
 void UG_SetBackcolor( UG_COLOR c );
@@ -580,6 +597,27 @@ void _UG_SendObjectPostrenderEvent(UG_WINDOW *wnd,UG_OBJECT *obj);
 #endif
 UG_U32 _UG_ConvertRGB565ToRGB888(UG_U16 c);
 UG_U16 _UG_ConvertRGB888ToRGB565(UG_U32 c);
+
+/* Decode inline color tags into plain text + color runs.
+ *
+ * font            : the font that will be used for rendering. This decides
+ *                   how multi-byte characters are counted (UTF-8 for new
+ *                   fonts, single-byte for old fonts). MUST be the same font
+ *                   that the resulting text is rendered with, otherwise the
+ *                   run indices will not line up with the renderer's char
+ *                   index. Passing NULL means "new font, UTF-8 if enabled".
+ * clean/clean_cap : output plain-text buffer (byte capacity, incl. NUL).
+ * runs/run_cap    : output run buffer. If runs == NULL, tags are stripped
+ *                   but no runs are emitted (run_count = 0).
+ * out_*           : output pointers / lengths. Must not be NULL.
+ * Returns UG_RESULT_OK or UG_RESULT_FAIL (buffer too small / bad args).
+ */
+UG_RESULT UG_DecodeText( const char* in,
+                         UG_FONT* font,
+                         char* clean, UG_U16 clean_cap,
+                         UG_ColorRun* runs, UG_U16 run_cap,
+                         char** out_clean, UG_U16* out_clean_len,
+                         UG_ColorRun** out_runs, UG_U16* out_run_count );
 
 /* Glyph lookup (replaces _UG_GetCharData) */
 UG_S16 _UG_GetGlyph( UG_CHAR encoding, UG_GLYPH *g );

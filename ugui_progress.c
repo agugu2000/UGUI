@@ -275,7 +275,7 @@ static void _UG_ProgressUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
                   d += 1;
                }
             }
-            
+
             w   = ((obj->a_abs.xe-d)-(obj->a_abs.xs+d));
             wps = w * pgb->progress / 100;
             wpe = w - wps;
@@ -289,11 +289,11 @@ static void _UG_ProgressUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
             {
                UG_S16 xs = obj->a_abs.xs + d + wps;
                UG_S16 xe = obj->a_abs.xe - d;
-               
+
                if ( pgb->style & PGB_STYLE_FORE_COLOR_MESH )
                {
                   // FIXME: Need fix, if start at 0, it is shifted 1 pixel right.
-                  // Needed to match mesh pattern, otherwise it would "scroll right" 
+                  // Needed to match mesh pattern, otherwise it would "scroll right"
                   if((((obj->a_abs.xs+d) & 1) && (wps & 1)) || (!((obj->a_abs.xs+d) & 1) && !(wps & 1)))
                      xs++;
                   UG_DrawMesh (xs, obj->a_abs.ys+d, xe, obj->a_abs.ye-d, 2, pgb->fc);

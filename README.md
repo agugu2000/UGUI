@@ -1,4 +1,4 @@
-# µGUI (fork) — Extended Font, UTF-8, Shadow
+# µGUI (fork) — Extended Font, UTF-8, Shadow, Inline Color
 
 Based on https://github.com/deividAlfa/UGUI with further modifications.
 
@@ -44,6 +44,47 @@ This is a fork based on https://github.com/deividAlfa/UGUI with the following fe
 - Only on 1BPP non-driver path.
 - Driver path has no shadow (design trade-off).
 
+### Inline color tags
+
+Per-glyph foreground color can be controlled inline in any string rendered
+by the library (textbox, button, checkbox, title, `UG_PutString`,
+`UG_ConsolePutString`).
+
+Tag syntax:
+
+| Tag | Meaning |
+|---|---|
+| `{#RRGGBB}` | set foreground color, persists until changed |
+| `{#}` | restore default foreground color, persists |
+| `{{` | literal `{` |
+
+Notes:
+
+- Tags are persistent (terminal semantics): once set, the color applies to
+  all following characters until another tag changes it, including across
+  line breaks.
+- Tags are parsed per frame when the string is passed directly. For
+  zero-parse rendering, pre-decode the string with `UG_DecodeText()` and
+  pass the resulting plain text + color runs via `UG_TEXT.runs`.
+- Invalid tags (e.g. `{#xyz}`, `{#FF00`) are treated as literal text.
+- `}` never needs escaping; only `{` does (as `{{`).
+- Tags are only recognized when `UG_TEXT.runs == NULL`. When `runs != NULL`,
+  the string is plain text and tags are NOT parsed.
+
+Example:
+
+    UG_ButtonSetText(&wnd, BTN_ID_0, "Start {#FF0000}Stop{#} Start");
+    UG_TextboxSetText(&wnd, TXB_ID_0, "Status: {#00FF00}OK{#}");
+    UG_PutString(10, 10, "Normal {#FF0000}Red {#00FF00}Green {#0000FF}Blue{#}");
+
+### API additions
+
+- `UG_DecodeText(in, font, clean, clean_cap, runs, run_cap, out_*, ...)` —
+  decode inline tags into plain text + color runs. The `font` argument must
+  be the same font used for rendering, so character indexing matches.
+- `UG_ConsoleReset()` — reset the console cursor to the top-left of the
+  console area (does not clear the area).
+
 ### Objects
 
 - Window, Button, Checkbox, Textbox, Progress, Image.
@@ -54,9 +95,12 @@ This is a fork based on https://github.com/deividAlfa/UGUI with the following fe
 
 - SDL2, cross-platform.
 - DPI scaling disabled for 1:1 pixel mapping.
-- Three pages: Control / Styles / Draw.
+- Four pages: Control / Styles / Draw / Color.
 - 16x16 RGB565 BMP test pattern.
 - Shadow toggled per page.
+- Page 4 showcases inline color tags: single-line multi-color, cross-line
+  color persistence, `{{` escape, invalid tag fallback, CJK + color,
+  colored button text, colored console output.
 
 ### Chinese font
 
@@ -74,6 +118,7 @@ and memory footprint may no longer be suitable for real hardware.
 <img src="./ugui.png" width="600">
 <img src="./ugui2.png" width="600">
 <img src="./ugui3.png" width="600">
+<img src="./ugui4.png" width="600">
 
 Simulator:
 - ugui_sim.c / ugui_sim.h: platform independent application layer
@@ -133,6 +178,7 @@ technologies such as LCD, TFT, E-Paper, LED or OLED are supported.
 * basic geometric functions (e.g. line, circle, frame etc.)
 * can be easily ported to almost any microcontroller system
 * no risky dynamic memory allocation required
+* inline per-glyph color tags (`{#RRGGBB}`, `{#}`, `{{`)
 
 ## µGUI Requirements
 µGUI is platform-independent, so there is no need to use a certain embedded system. In order to

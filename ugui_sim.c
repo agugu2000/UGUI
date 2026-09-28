@@ -21,6 +21,7 @@
 #define MAX_OBJS_PAGE1      20
 #define MAX_OBJS_PAGE2      30
 #define MAX_OBJS_PAGE3      15
+#define MAX_OBJS_PAGE4      15
 
 /* -------------------------------------------------------------------------------- */
 /* -- UI text constants                                                           -- */
@@ -30,11 +31,13 @@
 #define TXT_TITLE_P1            "Page 1: Control"
 #define TXT_TITLE_P2            "Page 2: Styles"
 #define TXT_TITLE_P3            "Page 3: Draw"
+#define TXT_TITLE_P4            "Page 4: Color"
 
 /* Page switch buttons */
 #define TXT_BTN_P1              "第1页"
 #define TXT_BTN_P2              "第2页"
 #define TXT_BTN_P3              "第3页"
+#define TXT_BTN_P4              "第4页"
 
 /* Page 1 */
 #define TXT_BTN_START           "开始"
@@ -85,6 +88,14 @@
 #define TXT_CONSOLE_LINE2       "Hello 世界\n"
 #define TXT_CONSOLE_LINE3       "12345\n"
 
+/* Page 4 — color showcase */
+#define TXT_C1  "Normal {#FF0000}Red {#00FF00}Green {#0000FF}Blue{#} Normal"
+#define TXT_C2  "中文{#FF0000}红色{#00FF00}绿色{#}默认"
+#define TXT_C3  "{#FF0000}Line1 red\nLine2 still red{#}\nLine3 default"
+#define TXT_C4  "Esc {{ brace, {#FFAA00}orange{#} back"
+#define TXT_C5  "Bad tag {#xyz} stays literal"
+#define TXT_C6  "Button text {#FF0000}red{#00FF00}green{#}"
+
 /* -------------------------------------------------------------------------------- */
 /* -- BMP test pattern colors                                                     -- */
 /* -------------------------------------------------------------------------------- */
@@ -104,7 +115,7 @@
 static simcfg_t *simCfg = NULL;
 
 static UG_GUI    ugui;
-static UG_WINDOW wnd1, wnd2, wnd3;
+static UG_WINDOW wnd1, wnd2, wnd3, wnd4;
 
 /* Page 1 objects */
 static UG_PROGRESS pgb_status;
@@ -115,22 +126,27 @@ static UG_PROGRESS pgb_speed, pgb_level;
 static UG_TEXTBOX  txb_info;
 static UG_IMAGE    img_test;
 static UG_TEXTBOX  txb_img_label;
-static UG_BUTTON   btn_p1_1, btn_p1_2, btn_p1_3;
+static UG_BUTTON   btn_p1_1, btn_p1_2, btn_p1_3, btn_p1_4;
 
 /* Page 2 objects */
 static UG_BUTTON   btn_s1, btn_s2, btn_s3, btn_s4, btn_s5, btn_s6;
 static UG_CHECKBOX chb_s1, chb_s2, chb_s3, chb_s4, chb_s5, chb_s6;
 static UG_PROGRESS pgb_s1, pgb_s2, pgb_s3, pgb_s4, pgb_s5;
 static UG_TEXTBOX  txb_a1, txb_a2, txb_a3, txb_a4, txb_a5, txb_a6;
-static UG_BUTTON   btn_p2_1, btn_p2_2, btn_p2_3;
+static UG_BUTTON   btn_p2_1, btn_p2_2, btn_p2_3, btn_p2_4;
 
 /* Page 3 objects */
 static UG_TEXTBOX  txb_p3_1, txb_p3_2, txb_p3_3, txb_p3_4;
-static UG_BUTTON   btn_p3_1, btn_p3_2, btn_p3_3;
+static UG_BUTTON   btn_p3_1, btn_p3_2, btn_p3_3, btn_p3_4;
+
+/* Page 4 objects */
+static UG_TEXTBOX  txb_c1, txb_c2, txb_c3, txb_c4, txb_c5, txb_c6;
+static UG_BUTTON   btn_p4_1, btn_p4_2, btn_p4_3, btn_p4_4;
 
 static UG_OBJECT   objs1[MAX_OBJS_PAGE1];
 static UG_OBJECT   objs2[MAX_OBJS_PAGE2];
 static UG_OBJECT   objs3[MAX_OBJS_PAGE3];
+static UG_OBJECT   objs4[MAX_OBJS_PAGE4];
 
 /* Runtime state */
 static UG_U8 g_running = 0;
@@ -311,6 +327,7 @@ static void draw_page3(void)
     UG_ConsoleSetArea(220, 265, 780, 315);
     UG_ConsoleSetForecolor(C_BLACK);
     UG_ConsoleSetBackcolor(C_WHITE);
+    UG_ConsoleReset();
     UG_ConsolePutString(TXT_CONSOLE_LINE1);
     UG_ConsolePutString(TXT_CONSOLE_LINE2);
     UG_ConsolePutString(TXT_CONSOLE_LINE3);
@@ -423,6 +440,11 @@ static void setup_page1(void)
     UG_ButtonSetFont(&wnd1, BTN_ID_19, FONT_SIMSUN2_13X13);
     UG_ButtonSetText(&wnd1, BTN_ID_19, TXT_BTN_P3);
     UG_ButtonSetStyle(&wnd1, BTN_ID_19, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd1, &btn_p1_4, BTN_ID_16, UGUI_POS(400, 550, 120, 35));
+    UG_ButtonSetFont(&wnd1, BTN_ID_16, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd1, BTN_ID_16, TXT_BTN_P4);
+    UG_ButtonSetStyle(&wnd1, BTN_ID_16, BTN_STYLE_3D);
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -575,6 +597,11 @@ static void setup_page2(void)
     UG_ButtonSetFont(&wnd2, BTN_ID_19, FONT_SIMSUN2_13X13);
     UG_ButtonSetText(&wnd2, BTN_ID_19, TXT_BTN_P3);
     UG_ButtonSetStyle(&wnd2, BTN_ID_19, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd2, &btn_p2_4, BTN_ID_16, UGUI_POS(400, 550, 120, 35));
+    UG_ButtonSetFont(&wnd2, BTN_ID_16, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd2, BTN_ID_16, TXT_BTN_P4);
+    UG_ButtonSetStyle(&wnd2, BTN_ID_16, BTN_STYLE_3D);
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -623,6 +650,73 @@ static void setup_page3(void)
     UG_ButtonSetFont(&wnd3, BTN_ID_19, FONT_SIMSUN2_13X13);
     UG_ButtonSetText(&wnd3, BTN_ID_19, TXT_BTN_P3);
     UG_ButtonSetStyle(&wnd3, BTN_ID_19, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd3, &btn_p3_4, BTN_ID_16, UGUI_POS(400, 550, 120, 35));
+    UG_ButtonSetFont(&wnd3, BTN_ID_16, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd3, BTN_ID_16, TXT_BTN_P4);
+    UG_ButtonSetStyle(&wnd3, BTN_ID_16, BTN_STYLE_3D);
+}
+
+/* -------------------------------------------------------------------------------- */
+/* -- Page 4 setup                                                                -- */
+/* -------------------------------------------------------------------------------- */
+static void setup_page4(void)
+{
+    UG_WindowCreate(&wnd4, objs4, MAX_OBJS_PAGE4, windowHandler);
+    UG_WindowSetTitleHeight(&wnd4, 0);
+    UG_WindowSetTitleTextFont(&wnd4, FONT_8X8);
+    UG_WindowSetTitleText(&wnd4, TXT_TITLE_P4);
+
+    UG_TextboxCreate(&wnd4, &txb_c1, TXB_ID_0, UGUI_POS(10, 10, 770, 40));
+    UG_TextboxSetFont(&wnd4, TXB_ID_0, FONT_SIMSUN2_13X13);
+    UG_TextboxSetText(&wnd4, TXB_ID_0, TXT_C1);
+    UG_TextboxSetAlignment(&wnd4, TXB_ID_0, ALIGN_CENTER);
+
+    UG_TextboxCreate(&wnd4, &txb_c2, TXB_ID_1, UGUI_POS(10, 60, 770, 40));
+    UG_TextboxSetFont(&wnd4, TXB_ID_1, FONT_SIMSUN2_13X13);
+    UG_TextboxSetText(&wnd4, TXB_ID_1, TXT_C2);
+    UG_TextboxSetAlignment(&wnd4, TXB_ID_1, ALIGN_CENTER);
+
+    UG_TextboxCreate(&wnd4, &txb_c3, TXB_ID_2, UGUI_POS(10, 110, 770, 70));
+    UG_TextboxSetFont(&wnd4, TXB_ID_2, FONT_SIMSUN2_13X13);
+    UG_TextboxSetText(&wnd4, TXB_ID_2, TXT_C3);
+    UG_TextboxSetAlignment(&wnd4, TXB_ID_2, ALIGN_CENTER);
+
+    UG_TextboxCreate(&wnd4, &txb_c4, TXB_ID_3, UGUI_POS(10, 190, 770, 40));
+    UG_TextboxSetFont(&wnd4, TXB_ID_3, FONT_SIMSUN2_13X13);
+    UG_TextboxSetText(&wnd4, TXB_ID_3, TXT_C4);
+    UG_TextboxSetAlignment(&wnd4, TXB_ID_3, ALIGN_CENTER);
+
+    UG_TextboxCreate(&wnd4, &txb_c5, TXB_ID_4, UGUI_POS(10, 240, 770, 40));
+    UG_TextboxSetFont(&wnd4, TXB_ID_4, FONT_SIMSUN2_13X13);
+    UG_TextboxSetText(&wnd4, TXB_ID_4, TXT_C5);
+    UG_TextboxSetAlignment(&wnd4, TXB_ID_4, ALIGN_CENTER);
+
+    UG_TextboxCreate(&wnd4, &txb_c6, TXB_ID_5, UGUI_POS(10, 290, 770, 40));
+    UG_TextboxSetFont(&wnd4, TXB_ID_5, FONT_SIMSUN2_13X13);
+    UG_TextboxSetText(&wnd4, TXB_ID_5, TXT_C6);
+    UG_TextboxSetAlignment(&wnd4, TXB_ID_5, ALIGN_CENTER);
+
+    /* Page switch buttons */
+    UG_ButtonCreate(&wnd4, &btn_p4_1, BTN_ID_17, UGUI_POS(10, 550, 120, 35));
+    UG_ButtonSetFont(&wnd4, BTN_ID_17, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd4, BTN_ID_17, TXT_BTN_P1);
+    UG_ButtonSetStyle(&wnd4, BTN_ID_17, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd4, &btn_p4_2, BTN_ID_18, UGUI_POS(140, 550, 120, 35));
+    UG_ButtonSetFont(&wnd4, BTN_ID_18, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd4, BTN_ID_18, TXT_BTN_P2);
+    UG_ButtonSetStyle(&wnd4, BTN_ID_18, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd4, &btn_p4_3, BTN_ID_19, UGUI_POS(270, 550, 120, 35));
+    UG_ButtonSetFont(&wnd4, BTN_ID_19, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd4, BTN_ID_19, TXT_BTN_P3);
+    UG_ButtonSetStyle(&wnd4, BTN_ID_19, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd4, &btn_p4_4, BTN_ID_16, UGUI_POS(400, 550, 120, 35));
+    UG_ButtonSetFont(&wnd4, BTN_ID_16, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd4, BTN_ID_16, TXT_BTN_P4);
+    UG_ButtonSetStyle(&wnd4, BTN_ID_16, BTN_STYLE_3D);
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -638,6 +732,7 @@ void GUI_Setup(UG_DEVICE *device)
     setup_page1();
     setup_page2();
     setup_page3();
+    setup_page4();
 
     update_info_text();
 
@@ -705,7 +800,13 @@ static void windowHandler(UG_MESSAGE *msg)
             UG_WindowShow(&wnd2);
             return;
         case BTN_ID_19:
-            UG_WindowShow(&wnd3);
+            if (ugui.active_window != &wnd3) {
+                UG_WindowShow(&wnd3);
+            }
+            page3_drawn = 0;
+            return;
+        case BTN_ID_16:
+            UG_WindowShow(&wnd4);
             return;
 
         /* Page 1 buttons */

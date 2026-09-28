@@ -1,4 +1,5 @@
 #include "ugui_checkbox.h"
+#include <string.h>
 
 /* -------------------------------------------------------------------------------- */
 /* -- Checkbox FUNCTIONS                                                           -- */
@@ -477,6 +478,8 @@ static void _UG_CheckboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
    UG_S16 obj_h;
    UG_COLOR c;
 
+   memset(&txt, 0, sizeof(txt));
+
    /* Get object-specific data */
    chb = (UG_CHECKBOX*)(obj->data);
 
@@ -585,7 +588,7 @@ static void _UG_CheckboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
          /* Draw Checkbox X, inside the box */
          c = chb->checked ? chb->fc : chb->bc;
 
-         UG_DrawLine(box_ys == 0 ? obj->a_abs.xs+d+1 : obj->a_abs.xs+d+1,  box_ys+d,   obj->a_abs.xs+d2+d-1, box_ys+d2+d-2, c);
+         UG_DrawLine(obj->a_abs.xs+d+1, box_ys+d, obj->a_abs.xs+d2+d-1, box_ys+d2+d-2, c);
          UG_DrawLine(obj->a_abs.xs+d,    box_ys+d,   obj->a_abs.xs+d2+d-1, box_ys+d2+d-1, c);
          UG_DrawLine(obj->a_abs.xs+d,    box_ys+d+1, obj->a_abs.xs+d2+d-2, box_ys+d2+d-1, c);
 

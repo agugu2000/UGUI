@@ -1,4 +1,5 @@
 #include "ugui_button.h"
+#include <string.h>
 
 /* -------------------------------------------------------------------------------- */
 /* -- BUTTON FUNCTIONS                                                           -- */
@@ -441,6 +442,8 @@ static void _UG_ButtonUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
    UG_TEXT txt;
    UG_U8 d,o=0;
 
+   memset(&txt, 0, sizeof(txt));
+
    /* Get object-specific data */
    btn = (UG_BUTTON*)(obj->data);
 
@@ -464,7 +467,7 @@ static void _UG_ButtonUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
          obj->state |= OBJ_STATE_UPDATE;
          obj->event = OBJ_EVENT_RELEASED;
       }
-      obj->touch_state &= ~OBJ_TOUCH_STATE_CHANGED;       
+      obj->touch_state &= ~OBJ_TOUCH_STATE_CHANGED;
 #ifdef BUTTON_TXT_DEPRESS
       obj->state |=  OBJ_STATE_REDRAW;
 #endif
