@@ -915,7 +915,7 @@ UG_U8 UG_FontGetShadow( void )
  *
  */
 #ifdef UGUI_USE_UTF8
-UG_CHAR _UG_DecodeUTF8(char **str) {
+static UG_CHAR _UG_DecodeUTF8(char **str) {
     unsigned char c = **str;
     uint32_t encoding = 0;
     int bytes_left = 0;
