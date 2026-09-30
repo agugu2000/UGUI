@@ -304,6 +304,11 @@
 
 #define C_BLACK                      0x00
 #define C_WHITE                      0xFF
+#define C_WHITE_39                   0x80
+#define C_WHITE_41                   0x80
+#define C_WHITE_63                   0x80
+#define C_WHITE_89                   0xFF
+#define C_WHITE_94                   0xFF
 
 #endif
 

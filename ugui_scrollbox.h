@@ -33,12 +33,19 @@ typedef struct
    UG_U8    vbar_mode;
    UG_S16   bar_thickness;
    UG_S16   bar_min_thumb;
+   UG_COLOR bar_track_color;
+   UG_COLOR bar_thumb_color;
 
    /* Measured content size. */
    UG_S32   content_w;
    UG_S32   content_h;
    UG_S32   line_h;
    UG_S32   line_count;
+
+   /* Touch drag state (only used when UGUI_USE_TOUCH is enabled). */
+   UG_S16   touch_last_x;
+   UG_S16   touch_last_y;
+   UG_U8    touch_active;
 
    /* Internal: ... */
    UG_U8    layout_dirty;
@@ -90,6 +97,12 @@ UG_RESULT UG_ScrollBoxSetContentOffset( UG_WINDOW* wnd, UG_U8 id,
                                         UG_S32 ox, UG_S32 oy );
 UG_RESULT UG_ScrollBoxSetBarMode( UG_WINDOW* wnd, UG_U8 id,
                                   UG_U8 hbar, UG_U8 vbar, UG_S16 thickness );
+UG_RESULT UG_ScrollBoxSetBarColor( UG_WINDOW* wnd, UG_U8 id,
+                                   UG_COLOR track, UG_COLOR thumb );
+/* Returns non-zero if the scrollbox is currently being dragged by touch.
+ * Applications can use this to ignore keyboard input while a touch drag
+ * is in progress, so the two input paths do not fight over scroll_x/y. */
+UG_U8 UG_ScrollBoxIsTouchActive( UG_WINDOW* wnd, UG_U8 id );
 UG_RESULT UG_ScrollBoxSetScroll( UG_WINDOW* wnd, UG_U8 id,
                                  UG_S32 sx, UG_S32 sy );
 UG_RESULT UG_ScrollBoxScrollBy( UG_WINDOW* wnd, UG_U8 id,

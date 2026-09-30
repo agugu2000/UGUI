@@ -176,9 +176,9 @@ static void _draw_vbar(UG_SCROLLBOX* scb, UG_S32 view_h_eff, UG_AREA* clip)
     UG_S32 thumb_ye = thumb_ys + thumb - 1;
 
     _UG_FillFrameClipped(track_xs, track_ys,
-                         track_xe, track_ye, clip, C_WHITE_94);
+                         track_xe, track_ye, clip, scb->bar_track_color);
     _UG_FillFrameClipped(track_xs, thumb_ys,
-                         track_xe, thumb_ye, clip, C_WHITE_39);
+                         track_xe, thumb_ye, clip, scb->bar_thumb_color);
 }
 
 static void _draw_hbar(UG_SCROLLBOX* scb, UG_S32 view_w_eff, UG_AREA* clip)
@@ -198,9 +198,9 @@ static void _draw_hbar(UG_SCROLLBOX* scb, UG_S32 view_w_eff, UG_AREA* clip)
     UG_S32 thumb_ye = track_ye;
 
     _UG_FillFrameClipped(track_xs, track_ys,
-                         track_xe, track_ye, clip, C_WHITE_94);
+                         track_xe, track_ye, clip, scb->bar_track_color);
     _UG_FillFrameClipped(thumb_xs, track_ys,
-                         thumb_xe, thumb_ye, clip, C_WHITE_39);
+                         thumb_xe, thumb_ye, clip, scb->bar_thumb_color);
 }
 
 static void _UG_ScrollBoxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
@@ -218,6 +218,38 @@ static void _UG_ScrollBoxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
 
     /* Get object-specific data */
     scb = (UG_SCROLLBOX*)(obj->data);
+
+#ifdef UGUI_USE_TOUCH
+    /* Touch drag: process before the state checks, because a drag may
+     * be the only thing that sets OBJ_STATE_UPDATE | OBJ_STATE_REDRAW. */
+    if (obj->touch_state & OBJ_TOUCH_STATE_CHANGED) {
+        if (obj->touch_state & OBJ_TOUCH_STATE_PRESSED_ON_OBJECT) {
+            scb->touch_last_x = UG_GetGUI()->touch.xp;
+            scb->touch_last_y = UG_GetGUI()->touch.yp;
+            scb->touch_active = 1;
+        }
+        if (obj->touch_state & (OBJ_TOUCH_STATE_RELEASED_ON_OBJECT |
+                                OBJ_TOUCH_STATE_RELEASED_OUTSIDE_OBJECT)) {
+            scb->touch_active = 0;
+        }
+        obj->touch_state &= ~OBJ_TOUCH_STATE_CHANGED;
+    }
+    if (scb->touch_active &&
+        (obj->touch_state & OBJ_TOUCH_STATE_IS_PRESSED_ON_OBJECT)) {
+        UG_S16 dx = UG_GetGUI()->touch.xp - scb->touch_last_x;
+        UG_S16 dy = UG_GetGUI()->touch.yp - scb->touch_last_y;
+        if (dx != 0) {
+            scb->scroll_x -= dx;
+            scb->touch_last_x = UG_GetGUI()->touch.xp;
+            obj->state |= OBJ_STATE_UPDATE | OBJ_STATE_REDRAW;
+        }
+        if (dy != 0) {
+            scb->scroll_y -= dy;
+            scb->touch_last_y = UG_GetGUI()->touch.yp;
+            obj->state |= OBJ_STATE_UPDATE | OBJ_STATE_REDRAW;
+        }
+    }
+#endif
 
     if ( !(obj->state & OBJ_STATE_UPDATE) ) return;
     if ( !(obj->state & OBJ_STATE_VISIBLE) ) {
@@ -303,6 +335,12 @@ static void _UG_ScrollBoxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
                       + scb->offset_x
                       - scb->scroll_x;
 
+            /* Bottom cull: if this line's top edge is already below the
+             * clip bottom, every subsequent line is below too. Stop the
+             * loop instead of iterating over the rest of the content.
+             * This is standard viewport culling. */
+            if (yp - asc > clip.ye) break;
+
             _UG_DrawTextLine(&s, xp, yp, &cur_fc, scb->fc, scb->bc,
                              scb->font, scb->runs, scb->run_count,
                              &char_index, &clip, scb->h_space);
@@ -346,6 +384,11 @@ UG_RESULT UG_ScrollBoxCreate( UG_WINDOW* wnd, UG_SCROLLBOX* scb, UG_U8 id,
     scb->vbar_mode = UG_SCROLLBAR_AUTO;
     scb->bar_thickness = 8;
     scb->bar_min_thumb = 8;
+    scb->bar_track_color = C_WHITE_94;
+    scb->bar_thumb_color = C_WHITE_39;
+    scb->touch_last_x = 0;
+    scb->touch_last_y = 0;
+    scb->touch_active = 0;
     scb->layout_dirty = 1;
 
     obj->update = _UG_ScrollBoxUpdate;
@@ -364,6 +407,9 @@ UG_RESULT UG_ScrollBoxCreate( UG_WINDOW* wnd, UG_SCROLLBOX* scb, UG_U8 id,
     obj->a_abs.ye = -1;
     obj->id = id;
     obj->state |= OBJ_STATE_VISIBLE | OBJ_STATE_REDRAW | OBJ_STATE_VALID;
+    #ifdef UGUI_USE_TOUCH
+    obj->state |= OBJ_STATE_TOUCH_ENABLE;
+    #endif
     obj->data = (void*)scb;
     obj->state &= ~OBJ_STATE_FREE;
 
@@ -521,6 +567,28 @@ UG_RESULT UG_ScrollBoxSetBarMode( UG_WINDOW* wnd, UG_U8 id,
     if (thickness > 0) scb->bar_thickness = thickness;
     obj->state |= OBJ_STATE_UPDATE | OBJ_STATE_REDRAW;
     return UG_RESULT_OK;
+}
+
+UG_RESULT UG_ScrollBoxSetBarColor( UG_WINDOW* wnd, UG_U8 id,
+                                   UG_COLOR track, UG_COLOR thumb )
+{
+    UG_OBJECT* obj = _UG_SearchObject( wnd, OBJ_TYPE_SCROLLBOX, id );
+    UG_SCROLLBOX* scb;
+    if ( obj == NULL ) return UG_RESULT_FAIL;
+    scb = (UG_SCROLLBOX*)(obj->data);
+    scb->bar_track_color = track;
+    scb->bar_thumb_color = thumb;
+    obj->state |= OBJ_STATE_UPDATE | OBJ_STATE_REDRAW;
+    return UG_RESULT_OK;
+}
+
+UG_U8 UG_ScrollBoxIsTouchActive( UG_WINDOW* wnd, UG_U8 id )
+{
+    UG_OBJECT* obj = _UG_SearchObject( wnd, OBJ_TYPE_SCROLLBOX, id );
+    UG_SCROLLBOX* scb;
+    if ( obj == NULL ) return 0;
+    scb = (UG_SCROLLBOX*)(obj->data);
+    return scb->touch_active;
 }
 
 UG_RESULT UG_ScrollBoxSetScroll( UG_WINDOW* wnd, UG_U8 id,

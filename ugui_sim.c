@@ -23,6 +23,7 @@
 #define MAX_OBJS_PAGE3      15
 #define MAX_OBJS_PAGE4      15
 #define MAX_OBJS_PAGE5      15
+#define MAX_OBJS_PAGE6      20
 
 /* -------------------------------------------------------------------------------- */
 /* -- UI text constants                                                           -- */
@@ -34,6 +35,7 @@
 #define TXT_TITLE_P3            "Page 3: Draw"
 #define TXT_TITLE_P4            "Page 4: Color"
 #define TXT_TITLE_P5            "Page 5: Scrollbox"
+#define TXT_TITLE_P6            "Page 6: Clipping"
 
 /* Page switch buttons */
 #define TXT_BTN_P1              "第1页"
@@ -41,6 +43,7 @@
 #define TXT_BTN_P3              "第3页"
 #define TXT_BTN_P4              "第4页"
 #define TXT_BTN_P5              "第5页"
+#define TXT_BTN_P6              "第6页"
 
 /* Page 1 */
 #define TXT_BTN_START           "开始"
@@ -129,6 +132,22 @@
     "Line 24: Line 24.\n" \
     "Line 25: Line 25 — the end."
 
+/* Page 6 — clipping test */
+#define TXT_CLIP_LONG \
+    "This is a very long single line that will not fit inside the " \
+    "textbox and should be clipped on the right side, not dropped."
+#define TXT_CLIP_SCB \
+    "Scrollbox clipping test.\n" \
+    "Line 2.\n" \
+    "Line 3.\n" \
+    "Line 4.\n" \
+    "Line 5.\n" \
+    "Line 6.\n" \
+    "Line 7.\n" \
+    "Line 8.\n" \
+    "Line 9.\n" \
+    "Line 10.\n"
+
 /* -------------------------------------------------------------------------------- */
 /* -- BMP test pattern colors                                                     -- */
 /* -------------------------------------------------------------------------------- */
@@ -148,7 +167,7 @@
 static simcfg_t *simCfg = NULL;
 
 static UG_GUI    ugui;
-static UG_WINDOW wnd1, wnd2, wnd3, wnd4, wnd5;
+static UG_WINDOW wnd1, wnd2, wnd3, wnd4, wnd5, wnd6;
 
 /* Page 1 objects */
 static UG_PROGRESS pgb_status;
@@ -159,33 +178,43 @@ static UG_PROGRESS pgb_speed, pgb_level;
 static UG_TEXTBOX  txb_info;
 static UG_IMAGE    img_test;
 static UG_TEXTBOX  txb_img_label;
-static UG_BUTTON   btn_p1_1, btn_p1_2, btn_p1_3, btn_p1_4, btn_p1_5;
+static UG_BUTTON   btn_p1_1, btn_p1_2, btn_p1_3, btn_p1_4, btn_p1_5, btn_p1_6;
 
 /* Page 2 objects */
 static UG_BUTTON   btn_s1, btn_s2, btn_s3, btn_s4, btn_s5, btn_s6;
 static UG_CHECKBOX chb_s1, chb_s2, chb_s3, chb_s4, chb_s5, chb_s6;
 static UG_PROGRESS pgb_s1, pgb_s2, pgb_s3, pgb_s4, pgb_s5;
 static UG_TEXTBOX  txb_a1, txb_a2, txb_a3, txb_a4, txb_a5, txb_a6;
-static UG_BUTTON   btn_p2_1, btn_p2_2, btn_p2_3, btn_p2_4, btn_p2_5;
+static UG_BUTTON   btn_p2_1, btn_p2_2, btn_p2_3, btn_p2_4, btn_p2_5, btn_p2_6;
 
 /* Page 3 objects */
 static UG_TEXTBOX  txb_p3_1, txb_p3_2, txb_p3_3, txb_p3_4;
-static UG_BUTTON   btn_p3_1, btn_p3_2, btn_p3_3, btn_p3_4, btn_p3_5;
+static UG_BUTTON   btn_p3_1, btn_p3_2, btn_p3_3, btn_p3_4, btn_p3_5, btn_p3_6;
 
 /* Page 4 objects */
 static UG_TEXTBOX  txb_c1, txb_c2, txb_c3, txb_c4, txb_c5, txb_c6;
-static UG_BUTTON   btn_p4_1, btn_p4_2, btn_p4_3, btn_p4_4, btn_p4_5;
+static UG_BUTTON   btn_p4_1, btn_p4_2, btn_p4_3, btn_p4_4, btn_p4_5, btn_p4_6;
 
 /* Page 5 objects */
 static UG_SCROLLBOX scb_main;
 static UG_TEXTBOX   txb_scb_label;
-static UG_BUTTON    btn_p5_1, btn_p5_2, btn_p5_3, btn_p5_4, btn_p5_5;
+static UG_BUTTON    btn_p5_1, btn_p5_2, btn_p5_3, btn_p5_4, btn_p5_5, btn_p5_6;
+
+/* Page 6 objects */
+static UG_TEXTBOX   txb_clip_a;
+static UG_BUTTON    btn_clip_b;
+static UG_SCROLLBOX scb_clip;
+static UG_IMAGE     img_clip_f;
+static UG_TEXTBOX   txb_clip_g;
+static UG_BUTTON    btn_clip_i;
+static UG_BUTTON    btn_p6_1, btn_p6_2, btn_p6_3, btn_p6_4, btn_p6_5, btn_p6_6;
 
 static UG_OBJECT   objs1[MAX_OBJS_PAGE1];
 static UG_OBJECT   objs2[MAX_OBJS_PAGE2];
 static UG_OBJECT   objs3[MAX_OBJS_PAGE3];
 static UG_OBJECT   objs4[MAX_OBJS_PAGE4];
 static UG_OBJECT   objs5[MAX_OBJS_PAGE5];
+static UG_OBJECT   objs6[MAX_OBJS_PAGE6];
 
 /* Runtime state */
 static UG_U8 g_running = 0;
@@ -489,6 +518,12 @@ static void setup_page1(void)
     UG_ButtonSetFont(&wnd1, BTN_ID_19, FONT_SIMSUN2_13X13);
     UG_ButtonSetText(&wnd1, BTN_ID_19, TXT_BTN_P5);
     UG_ButtonSetStyle(&wnd1, BTN_ID_19, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd1, &btn_p1_6, BTN_ID_14, UGUI_POS(660, 550, 120, 35));
+    UG_ButtonSetFont(&wnd1, BTN_ID_14, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd1, BTN_ID_14, TXT_BTN_P6);
+    UG_ButtonSetStyle(&wnd1, BTN_ID_14, BTN_STYLE_3D);
+
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -651,6 +686,11 @@ static void setup_page2(void)
     UG_ButtonSetFont(&wnd2, BTN_ID_19, FONT_SIMSUN2_13X13);
     UG_ButtonSetText(&wnd2, BTN_ID_19, TXT_BTN_P5);
     UG_ButtonSetStyle(&wnd2, BTN_ID_19, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd2, &btn_p2_6, BTN_ID_14, UGUI_POS(660, 550, 120, 35));
+    UG_ButtonSetFont(&wnd2, BTN_ID_14, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd2, BTN_ID_14, TXT_BTN_P6);
+    UG_ButtonSetStyle(&wnd2, BTN_ID_14, BTN_STYLE_3D);
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -709,6 +749,12 @@ static void setup_page3(void)
     UG_ButtonSetFont(&wnd3, BTN_ID_19, FONT_SIMSUN2_13X13);
     UG_ButtonSetText(&wnd3, BTN_ID_19, TXT_BTN_P5);
     UG_ButtonSetStyle(&wnd3, BTN_ID_19, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd3, &btn_p3_6, BTN_ID_14, UGUI_POS(660, 550, 120, 35));
+    UG_ButtonSetFont(&wnd3, BTN_ID_14, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd3, BTN_ID_14, TXT_BTN_P6);
+    UG_ButtonSetStyle(&wnd3, BTN_ID_14, BTN_STYLE_3D);
+
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -776,6 +822,11 @@ static void setup_page4(void)
     UG_ButtonSetFont(&wnd4, BTN_ID_19, FONT_SIMSUN2_13X13);
     UG_ButtonSetText(&wnd4, BTN_ID_19, TXT_BTN_P5);
     UG_ButtonSetStyle(&wnd4, BTN_ID_19, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd4, &btn_p4_6, BTN_ID_14, UGUI_POS(660, 550, 120, 35));
+    UG_ButtonSetFont(&wnd4, BTN_ID_14, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd4, BTN_ID_14, TXT_BTN_P6);
+    UG_ButtonSetStyle(&wnd4, BTN_ID_14, BTN_STYLE_3D);
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -830,6 +881,89 @@ static void setup_page5(void)
     UG_ButtonSetFont(&wnd5, BTN_ID_19, FONT_SIMSUN2_13X13);
     UG_ButtonSetText(&wnd5, BTN_ID_19, TXT_BTN_P5);
     UG_ButtonSetStyle(&wnd5, BTN_ID_19, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd5, &btn_p5_6, BTN_ID_14, UGUI_POS(660, 550, 120, 35));
+    UG_ButtonSetFont(&wnd5, BTN_ID_14, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd5, BTN_ID_14, TXT_BTN_P6);
+    UG_ButtonSetStyle(&wnd5, BTN_ID_14, BTN_STYLE_3D);
+}
+
+/* -------------------------------------------------------------------------------- */
+/* -- Page 6 setup: clipping test                                                -- */
+/* -------------------------------------------------------------------------------- */
+static void setup_page6(void)
+{
+    UG_WindowCreate(&wnd6, objs6, MAX_OBJS_PAGE6, windowHandler);
+    UG_WindowSetTitleHeight(&wnd6, 0);
+    UG_WindowSetTitleTextFont(&wnd6, FONT_8X8);
+    UG_WindowSetTitleText(&wnd6, TXT_TITLE_P6);
+
+    /* --- A: textbox with bottom-right corner outside the window --- */
+    UG_TextboxCreate(&wnd6, &txb_clip_a, TXB_ID_0, UGUI_POS(700, 500, 200, 150));
+    UG_TextboxSetFont(&wnd6, TXB_ID_0, FONT_SIMSUN2_13X13);
+    UG_TextboxSetText(&wnd6, TXB_ID_0, TXT_CLIP_LONG);
+    UG_TextboxSetAlignment(&wnd6, TXB_ID_0, ALIGN_TOP_LEFT);
+
+    /* --- B: button with left edge outside the window --- */
+    UG_ButtonCreate(&wnd6, &btn_clip_b, BTN_ID_0, UGUI_POS(-50, 50, 150, 100));
+    UG_ButtonSetFont(&wnd6, BTN_ID_0, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd6, BTN_ID_0, "Cut L");
+    UG_ButtonSetStyle(&wnd6, BTN_ID_0, BTN_STYLE_3D);
+
+    /* --- Scrollbox (also the source of OBJ_EVENT_POSTRENDER) --- */
+    UG_ScrollBoxCreate(&wnd6, &scb_clip, SCB_ID_0, UGUI_POS(10, 200, 200, 100));
+    UG_ScrollBoxSetFont(&wnd6, SCB_ID_0, FONT_SIMSUN2_13X13);
+    UG_ScrollBoxSetText(&wnd6, SCB_ID_0, TXT_CLIP_SCB);
+    UG_ScrollBoxSetForeColor(&wnd6, SCB_ID_0, C_BLACK);
+    UG_ScrollBoxSetBackColor(&wnd6, SCB_ID_0, C_WHITE);
+    UG_ScrollBoxSetBarMode(&wnd6, SCB_ID_0, UG_SCROLLBAR_AUTO, UG_SCROLLBAR_AUTO, 8);
+
+    /* --- F: BMP with right edge outside the window --- */
+    UG_ImageCreate(&wnd6, &img_clip_f, IMG_ID_0, UGUI_POS(790, 250, 16, 16));
+    UG_ImageSetBMP(&wnd6, IMG_ID_0, &bmp_test);
+
+    /* --- G: textbox with an overlong line, must be clipped --- */
+    UG_TextboxCreate(&wnd6, &txb_clip_g, TXB_ID_1, UGUI_POS(10, 320, 380, 180));
+    UG_TextboxSetFont(&wnd6, TXB_ID_1, FONT_SIMSUN2_13X13);
+    UG_TextboxSetText(&wnd6, TXB_ID_1, TXT_CLIP_LONG);
+    UG_TextboxSetAlignment(&wnd6, TXB_ID_1, ALIGN_TOP_LEFT);
+
+    /* --- I: button whose text is wider than the button --- */
+    UG_ButtonCreate(&wnd6, &btn_clip_i, BTN_ID_1, UGUI_POS(410, 320, 120, 40));
+    UG_ButtonSetFont(&wnd6, BTN_ID_1, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd6, BTN_ID_1, "Text much wider than button");
+    UG_ButtonSetStyle(&wnd6, BTN_ID_1, BTN_STYLE_3D);
+
+    /* Page switch buttons */
+    UG_ButtonCreate(&wnd6, &btn_p6_1, BTN_ID_15, UGUI_POS(10, 550, 120, 35));
+    UG_ButtonSetFont(&wnd6, BTN_ID_15, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd6, BTN_ID_15, TXT_BTN_P1);
+    UG_ButtonSetStyle(&wnd6, BTN_ID_15, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd6, &btn_p6_2, BTN_ID_16, UGUI_POS(140, 550, 120, 35));
+    UG_ButtonSetFont(&wnd6, BTN_ID_16, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd6, BTN_ID_16, TXT_BTN_P2);
+    UG_ButtonSetStyle(&wnd6, BTN_ID_16, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd6, &btn_p6_3, BTN_ID_17, UGUI_POS(270, 550, 120, 35));
+    UG_ButtonSetFont(&wnd6, BTN_ID_17, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd6, BTN_ID_17, TXT_BTN_P3);
+    UG_ButtonSetStyle(&wnd6, BTN_ID_17, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd6, &btn_p6_4, BTN_ID_18, UGUI_POS(400, 550, 120, 35));
+    UG_ButtonSetFont(&wnd6, BTN_ID_18, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd6, BTN_ID_18, TXT_BTN_P4);
+    UG_ButtonSetStyle(&wnd6, BTN_ID_18, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd6, &btn_p6_5, BTN_ID_19, UGUI_POS(530, 550, 120, 35));
+    UG_ButtonSetFont(&wnd6, BTN_ID_19, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd6, BTN_ID_19, TXT_BTN_P5);
+    UG_ButtonSetStyle(&wnd6, BTN_ID_19, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd6, &btn_p6_6, BTN_ID_14, UGUI_POS(660, 550, 120, 35));
+    UG_ButtonSetFont(&wnd6, BTN_ID_14, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd6, BTN_ID_14, TXT_BTN_P6);
+    UG_ButtonSetStyle(&wnd6, BTN_ID_14, BTN_STYLE_3D);
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -847,6 +981,7 @@ void GUI_Setup(UG_DEVICE *device)
     setup_page3();
     setup_page4();
     setup_page5();
+    setup_page6();
 
     update_info_text();
 
@@ -898,6 +1033,17 @@ void GUI_HandleKey(int key)
 {
     if (ugui.active_window != &wnd5) return;
 
+    /* If the scrollbox is being dragged by touch, ignore keyboard input
+     * so the two input paths do not fight over scroll_x/y. */
+    if (UG_ScrollBoxIsTouchActive(&wnd5, SCB_ID_0)) return;
+
+#ifdef UGUI_USE_TOUCH
+    /* Same-frame guard: if the mouse went down in this frame, the
+     * scrollbox's touch_active flag has not been updated yet (that
+     * happens in _UG_ScrollBoxUpdate, after GUI_HandleKey runs). */
+    if (ugui.touch.state) return;
+#endif
+
     switch (key)
     {
     case GUI_KEY_UP:
@@ -946,6 +1092,26 @@ static void windowHandler(UG_MESSAGE *msg)
         return;
     }
 
+    /* Page 6: out-of-range drawing primitives. Redrawn every time the
+     * scrollbox finishes rendering, so they survive window redraws. */
+    if (msg->event == OBJ_EVENT_POSTRENDER &&
+        msg->id == OBJ_TYPE_SCROLLBOX &&
+        msg->sub_id == SCB_ID_0 &&
+        ugui.active_window == &wnd6)
+    {
+        /* Line crossing the whole screen, both ends far outside */
+        UG_DrawLine(-100, -100, 900, 700, C_RED);
+        /* Frame far outside, only the middle visible */
+        UG_DrawFrame(-50, -50, 850, 650, C_BLUE);
+        /* Circle mostly outside (top-left) */
+        UG_DrawCircle(-50, -50, 100, C_GREEN);
+        /* Arc mostly outside (bottom-right) */
+        UG_DrawArc(850, 650, 100, 0xFF, C_MAGENTA);
+        /* Filled frame partially outside */
+        UG_FillFrame(700, 400, 850, 550, C_YELLOW);
+        return;
+    }
+
     if (msg->event != OBJ_EVENT_RELEASED) return;
 
     switch (msg->id)
@@ -971,6 +1137,9 @@ static void windowHandler(UG_MESSAGE *msg)
             return;
         case BTN_ID_19:
             UG_WindowShow(&wnd5);
+            return;
+        case BTN_ID_14:
+            UG_WindowShow(&wnd6);
             return;
 
         /* Page 1 buttons */

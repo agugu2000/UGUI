@@ -513,8 +513,8 @@ void UG_DrawCircle( UG_S16 x0, UG_S16 y0, UG_S16 r, UG_COLOR c )
    UG_S16 x,y,xd,yd,e;
    UG_S16 X, Y;
 
-   if ( x0<0 ) return;
-   if ( y0<0 ) return;
+   // if ( x0<0 ) return;
+   // if ( y0<0 ) return;
    if ( r<=0 ) return;
 
    xd = 1 - (r << 1);
@@ -558,8 +558,8 @@ void UG_FillCircle( UG_S16 x0, UG_S16 y0, UG_S16 r, UG_COLOR c )
 {
    UG_S16  x,y,xd;
 
-   if ( x0<0 ) return;
-   if ( y0<0 ) return;
+   // if ( x0<0 ) return;
+   // if ( y0<0 ) return;
    if ( r<=0 ) return;
 
    xd = 3 - (r << 1);
@@ -597,8 +597,8 @@ void UG_DrawArc( UG_S16 x0, UG_S16 y0, UG_S16 r, UG_U8 s, UG_COLOR c )
    UG_S16 x,y,xd,yd,e;
    UG_S16 X, Y;
 
-   if ( x0<0 ) return;
-   if ( y0<0 ) return;
+   // if ( x0<0 ) return;
+   // if ( y0<0 ) return;
    if ( r<=0 ) return;
 
    xd = 1 - (r << 1);
