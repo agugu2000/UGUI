@@ -389,14 +389,12 @@ UG_RESULT UG_ScrollBoxCreate( UG_WINDOW* wnd, UG_SCROLLBOX* scb, UG_U8 id,
     {
         UG_S16 w = xe - xs + 1;
         UG_S16 h = ye - ys + 1;
-        UG_S16 tv = (UG_S16)((UG_S32)h * 15 / 1000);
-        UG_S16 th = (UG_S16)((UG_S32)w * 15 / 1000);
-        if (tv < 3) tv = 3;
-        if (tv > 12) tv = 12;
-        if (th < 3) th = 3;
-        if (th > 12) th = 12;
-        scb->vbar_thickness = tv;
-        scb->hbar_thickness = th;
+        UG_S16 short_side = (w < h) ? w : h;
+        UG_S16 t = (UG_S16)((UG_S32)short_side * 15 / 1000);
+        if (t < 3) t = 3;
+        if (t > 12) t = 12;
+        scb->vbar_thickness = t;
+        scb->hbar_thickness = t;
     }
     scb->bar_min_thumb = 8;
     scb->bar_track_color = C_WHITE_94;
