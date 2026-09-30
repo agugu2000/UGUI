@@ -854,7 +854,7 @@ static void setup_page5(void)
     UG_ScrollBoxSetText(&wnd5, SCB_ID_0, TXT_SCB_LONG);
     UG_ScrollBoxSetForeColor(&wnd5, SCB_ID_0, C_BLACK);
     UG_ScrollBoxSetBackColor(&wnd5, SCB_ID_0, C_WHITE);
-    UG_ScrollBoxSetBarMode(&wnd5, SCB_ID_0, UG_SCROLLBAR_AUTO, UG_SCROLLBAR_AUTO, 8);
+    UG_ScrollBoxSetBarMode(&wnd5, SCB_ID_0, UG_SCROLLBAR_AUTO, UG_SCROLLBAR_AUTO, 0, 0);
 
     /* Page switch buttons */
     UG_ButtonCreate(&wnd5, &btn_p5_1, BTN_ID_15, UGUI_POS(10, 550, 120, 35));
@@ -916,7 +916,7 @@ static void setup_page6(void)
     UG_ScrollBoxSetText(&wnd6, SCB_ID_0, TXT_CLIP_SCB);
     UG_ScrollBoxSetForeColor(&wnd6, SCB_ID_0, C_BLACK);
     UG_ScrollBoxSetBackColor(&wnd6, SCB_ID_0, C_WHITE);
-    UG_ScrollBoxSetBarMode(&wnd6, SCB_ID_0, UG_SCROLLBAR_AUTO, UG_SCROLLBAR_AUTO, 8);
+    UG_ScrollBoxSetBarMode(&wnd5, SCB_ID_0, UG_SCROLLBAR_AUTO, UG_SCROLLBAR_AUTO, 0, 0);
 
     /* --- F: BMP with right edge outside the window --- */
     UG_ImageCreate(&wnd6, &img_clip_f, IMG_ID_0, UGUI_POS(790, 250, 16, 16));

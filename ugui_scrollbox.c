@@ -59,8 +59,8 @@ static void _resolve_bars(const UG_SCROLLBOX* scb,
 {
     UG_S32 view_w = _track_len(scb->view.xs, scb->view.xe);
     UG_S32 view_h = _track_len(scb->view.ys, scb->view.ye);
-    UG_S32 bar_w = scb->bar_thickness;
-    UG_S32 bar_h = scb->bar_thickness;
+    UG_S32 bar_w = scb->vbar_thickness;   /* vertical bar width */
+    UG_S32 bar_h = scb->hbar_thickness;   /* horizontal bar height */
     UG_S32 content_w_ext = scb->content_w + scb->offset_x;
     UG_S32 content_h_ext = scb->content_h + scb->offset_y;
     UG_S32 need_h = 0, need_v = 0;
@@ -162,7 +162,7 @@ static void _clamp_scroll(UG_SCROLLBOX* scb, UG_S32 view_w_eff, UG_S32 view_h_ef
 
 static void _draw_vbar(UG_SCROLLBOX* scb, UG_S32 view_h_eff, UG_AREA* clip)
 {
-    UG_S32 bar_w = scb->bar_thickness;
+    UG_S32 bar_w = scb->vbar_thickness;
     UG_S32 track_xs = scb->view.xe - bar_w + 1;
     UG_S32 track_xe = scb->view.xe;
     UG_S32 track_ys = scb->view.ys;
@@ -183,7 +183,7 @@ static void _draw_vbar(UG_SCROLLBOX* scb, UG_S32 view_h_eff, UG_AREA* clip)
 
 static void _draw_hbar(UG_SCROLLBOX* scb, UG_S32 view_w_eff, UG_AREA* clip)
 {
-    UG_S32 bar_h = scb->bar_thickness;
+    UG_S32 bar_h = scb->hbar_thickness;
     UG_S32 track_ys = scb->view.ye - bar_h + 1;
     UG_S32 track_ye = scb->view.ye;
     UG_S32 track_xs = scb->view.xs;
@@ -382,7 +382,22 @@ UG_RESULT UG_ScrollBoxCreate( UG_WINDOW* wnd, UG_SCROLLBOX* scb, UG_U8 id,
     scb->run_count = 0;
     scb->hbar_mode = UG_SCROLLBAR_AUTO;
     scb->vbar_mode = UG_SCROLLBAR_AUTO;
-    scb->bar_thickness = 8;
+    /* Scrollbar thickness: 1.5% of the corresponding viewport dimension,
+     * clamped to [3, 12]. The vertical bar's width scales with view_h,
+     * the horizontal bar's height scales with view_w, so both stay
+     * proportional on any aspect ratio. */
+    {
+        UG_S16 w = xe - xs + 1;
+        UG_S16 h = ye - ys + 1;
+        UG_S16 tv = (UG_S16)((UG_S32)h * 15 / 1000);
+        UG_S16 th = (UG_S16)((UG_S32)w * 15 / 1000);
+        if (tv < 3) tv = 3;
+        if (tv > 12) tv = 12;
+        if (th < 3) th = 3;
+        if (th > 12) th = 12;
+        scb->vbar_thickness = tv;
+        scb->hbar_thickness = th;
+    }
     scb->bar_min_thumb = 8;
     scb->bar_track_color = C_WHITE_94;
     scb->bar_thumb_color = C_WHITE_39;
@@ -556,7 +571,9 @@ UG_RESULT UG_ScrollBoxSetContentOffset( UG_WINDOW* wnd, UG_U8 id,
 }
 
 UG_RESULT UG_ScrollBoxSetBarMode( UG_WINDOW* wnd, UG_U8 id,
-                                  UG_U8 hbar, UG_U8 vbar, UG_S16 thickness )
+                                  UG_U8 hbar, UG_U8 vbar,
+                                  UG_S16 vbar_thickness,
+                                  UG_S16 hbar_thickness )
 {
     UG_OBJECT* obj = _UG_SearchObject( wnd, OBJ_TYPE_SCROLLBOX, id );
     UG_SCROLLBOX* scb;
@@ -564,7 +581,8 @@ UG_RESULT UG_ScrollBoxSetBarMode( UG_WINDOW* wnd, UG_U8 id,
     scb = (UG_SCROLLBOX*)(obj->data);
     scb->hbar_mode = hbar;
     scb->vbar_mode = vbar;
-    if (thickness > 0) scb->bar_thickness = thickness;
+    if (vbar_thickness > 0) scb->vbar_thickness = vbar_thickness;
+    if (hbar_thickness > 0) scb->hbar_thickness = hbar_thickness;
     obj->state |= OBJ_STATE_UPDATE | OBJ_STATE_REDRAW;
     return UG_RESULT_OK;
 }
