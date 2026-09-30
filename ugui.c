@@ -23,8 +23,8 @@ static UG_RESULT _UG_WindowDrawTitle( UG_WINDOW* wnd );
 static void _UG_WindowUpdate( UG_WINDOW* wnd );
 static UG_RESULT _UG_WindowClear( UG_WINDOW* wnd );
 static void _UG_FontSelect( UG_FONT *font);
-static UG_S16 _UG_PutChar( UG_CHAR chr, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COLOR bc);
-static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COLOR bc, UG_U8 trans );
+static UG_S16 _UG_PutChar( UG_CHAR chr, UG_S32 x, UG_S32 y, UG_COLOR fc, UG_COLOR bc);
+static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S32 x, UG_S32 y, UG_COLOR fc, UG_COLOR bc, UG_U8 trans, UG_AREA* clip );
 #ifdef UGUI_USE_UTF8
 static UG_U16 _UG_DecodeUTF8(char **str);
 #endif
@@ -74,6 +74,72 @@ static UG_COLOR _UG_BlendColor(UG_COLOR fg, UG_COLOR bg, UG_U8 a)
         return (UG_U8)(v & 0xFF);
     }
 #endif
+}
+
+/* -------------------------------------------------------------------------------- */
+/* -- Cohen-Sutherland line clipping (device bounds)                             -- */
+/* -------------------------------------------------------------------------------- */
+#define _UG_CLIP_INSIDE  0
+#define _UG_CLIP_LEFT    1
+#define _UG_CLIP_RIGHT   2
+#define _UG_CLIP_BOTTOM  4
+#define _UG_CLIP_TOP     8
+
+static int _UG_ComputeOutCode(UG_S32 x, UG_S32 y,
+                              UG_S32 xmin, UG_S32 ymin, UG_S32 xmax, UG_S32 ymax)
+{
+    int code = _UG_CLIP_INSIDE;
+    if (x < xmin)      code |= _UG_CLIP_LEFT;
+    else if (x > xmax) code |= _UG_CLIP_RIGHT;
+    if (y < ymin)      code |= _UG_CLIP_BOTTOM;
+    else if (y > ymax) code |= _UG_CLIP_TOP;
+    return code;
+}
+
+/*
+ * Clip a line segment to the rectangle [xmin..xmax] x [ymin..ymax]
+ * using the Cohen-Sutherland algorithm.
+ *
+ * Returns 1 if any part of the segment is inside the rectangle, and on
+ * success updates *x1,*y1,*x2,*y2 to the clipped endpoints.
+ * Returns 0 if the segment is entirely outside (nothing to draw).
+ */
+static int _UG_ClipLine(UG_S32* x1, UG_S32* y1, UG_S32* x2, UG_S32* y2,
+                        UG_S32 xmin, UG_S32 ymin, UG_S32 xmax, UG_S32 ymax)
+{
+    int code1 = _UG_ComputeOutCode(*x1, *y1, xmin, ymin, xmax, ymax);
+    int code2 = _UG_ComputeOutCode(*x2, *y2, xmin, ymin, xmax, ymax);
+    int codeOut;
+    UG_S32 x, y;
+
+    while (1) {
+        if ((code1 | code2) == 0) return 1;         /* both endpoints inside */
+        if ((code1 & code2) != 0) return 0;         /* both outside on same side */
+
+        codeOut = code1 ? code1 : code2;
+
+        if (codeOut & _UG_CLIP_TOP) {
+            x = *x1 + (*x2 - *x1) * (ymax - *y1) / (*y2 - *y1);
+            y = ymax;
+        } else if (codeOut & _UG_CLIP_BOTTOM) {
+            x = *x1 + (*x2 - *x1) * (ymin - *y1) / (*y2 - *y1);
+            y = ymin;
+        } else if (codeOut & _UG_CLIP_RIGHT) {
+            y = *y1 + (*y2 - *y1) * (xmax - *x1) / (*x2 - *x1);
+            x = xmax;
+        } else { /* _UG_CLIP_LEFT */
+            y = *y1 + (*y2 - *y1) * (xmin - *x1) / (*x2 - *x1);
+            x = xmin;
+        }
+
+        if (codeOut == code1) {
+            *x1 = x; *y1 = y;
+            code1 = _UG_ComputeOutCode(*x1, *y1, xmin, ymin, xmax, ymax);
+        } else {
+            *x2 = x; *y2 = y;
+            code2 = _UG_ComputeOutCode(*x2, *y2, xmin, ymin, xmax, ymax);
+        }
+    }
 }
 
 static UG_S8 _UG_HexVal( UG_U8 c )
@@ -314,6 +380,13 @@ void UG_FillFrame( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_COLOR c )
    if ( y2 < y1 )
      UGUI_SWAP(y1,y2);
 
+   /* Clamp to device bounds: public API must never write out of range. */
+   if (x1 < 0) x1 = 0;
+   if (y1 < 0) y1 = 0;
+   if (x2 >= gui->device->x_dim) x2 = gui->device->x_dim - 1;
+   if (y2 >= gui->device->y_dim) y2 = gui->device->y_dim - 1;
+   if (x1 > x2 || y1 > y2) return;
+
    /* Is hardware acceleration available? */
    if ( gui->driver[DRIVER_FILL_FRAME].state & DRIVER_ENABLED )
    {
@@ -429,12 +502,16 @@ void UG_DrawRoundFrame( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_S16 r, UG
 
 void UG_DrawPixel( UG_S16 x0, UG_S16 y0, UG_COLOR c )
 {
+   /* Clamp to device bounds: public API must never write out of range. */
+   if (x0 < 0 || x0 >= gui->device->x_dim) return;
+   if (y0 < 0 || y0 >= gui->device->y_dim) return;
    gui->device->pset(x0,y0,c);
 }
 
 void UG_DrawCircle( UG_S16 x0, UG_S16 y0, UG_S16 r, UG_COLOR c )
 {
    UG_S16 x,y,xd,yd,e;
+   UG_S16 X, Y;
 
    if ( x0<0 ) return;
    if ( y0<0 ) return;
@@ -448,14 +525,22 @@ void UG_DrawCircle( UG_S16 x0, UG_S16 y0, UG_S16 r, UG_COLOR c )
 
    while ( x >= y )
    {
-      gui->device->pset(x0 - x, y0 + y, c);
-      gui->device->pset(x0 - x, y0 - y, c);
-      gui->device->pset(x0 + x, y0 + y, c);
-      gui->device->pset(x0 + x, y0 - y, c);
-      gui->device->pset(x0 - y, y0 + x, c);
-      gui->device->pset(x0 - y, y0 - x, c);
-      gui->device->pset(x0 + y, y0 + x, c);
-      gui->device->pset(x0 + y, y0 - x, c);
+      X = x0 - x; Y = y0 + y;
+      if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c);
+      X = x0 - x; Y = y0 - y;
+      if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c);
+      X = x0 + x; Y = y0 + y;
+      if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c);
+      X = x0 + x; Y = y0 - y;
+      if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c);
+      X = x0 - y; Y = y0 + x;
+      if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c);
+      X = x0 - y; Y = y0 - x;
+      if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c);
+      X = x0 + y; Y = y0 + x;
+      if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c);
+      X = x0 + y; Y = y0 - x;
+      if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c);
 
       y++;
       e += yd;
@@ -510,6 +595,7 @@ void UG_FillCircle( UG_S16 x0, UG_S16 y0, UG_S16 r, UG_COLOR c )
 void UG_DrawArc( UG_S16 x0, UG_S16 y0, UG_S16 r, UG_U8 s, UG_COLOR c )
 {
    UG_S16 x,y,xd,yd,e;
+   UG_S16 X, Y;
 
    if ( x0<0 ) return;
    if ( y0<0 ) return;
@@ -524,20 +610,28 @@ void UG_DrawArc( UG_S16 x0, UG_S16 y0, UG_S16 r, UG_U8 s, UG_COLOR c )
    while ( x >= y )
    {
       // Q1
-      if ( s & 0x01 ) gui->device->pset(x0 + x, y0 - y, c);
-      if ( s & 0x02 ) gui->device->pset(x0 + y, y0 - x, c);
+      if ( s & 0x01 ) { X = x0 + x; Y = y0 - y;
+         if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c); }
+      if ( s & 0x02 ) { X = x0 + y; Y = y0 - x;
+         if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c); }
 
       // Q2
-      if ( s & 0x04 ) gui->device->pset(x0 - y, y0 - x, c);
-      if ( s & 0x08 ) gui->device->pset(x0 - x, y0 - y, c);
+      if ( s & 0x04 ) { X = x0 - y; Y = y0 - x;
+         if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c); }
+      if ( s & 0x08 ) { X = x0 - x; Y = y0 - y;
+         if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c); }
 
       // Q3
-      if ( s & 0x10 ) gui->device->pset(x0 - x, y0 + y, c);
-      if ( s & 0x20 ) gui->device->pset(x0 - y, y0 + x, c);
+      if ( s & 0x10 ) { X = x0 - x; Y = y0 + y;
+         if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c); }
+      if ( s & 0x20 ) { X = x0 - y; Y = y0 + x;
+         if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c); }
 
       // Q4
-      if ( s & 0x40 ) gui->device->pset(x0 + y, y0 + x, c);
-      if ( s & 0x80 ) gui->device->pset(x0 + x, y0 + y, c);
+      if ( s & 0x40 ) { X = x0 + y; Y = y0 + x;
+         if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c); }
+      if ( s & 0x80 ) { X = x0 + x; Y = y0 + y;
+         if (X >= 0 && X < gui->device->x_dim && Y >= 0 && Y < gui->device->y_dim) gui->device->pset(X, Y, c); }
 
       y++;
       e += yd;
@@ -555,10 +649,28 @@ void UG_DrawLine( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_COLOR c )
 {
    UG_S16 n, dx, dy, sgndx, sgndy, dxabs, dyabs, x, y, drawx, drawy;
 
+   /* Clamp to device bounds: public API must never write out of range.
+    * Reject lines entirely outside first, to avoid the pixel loop. */
+   if (x1 < 0 && x2 < 0) return;
+   if (y1 < 0 && y2 < 0) return;
+   if (x1 >= gui->device->x_dim && x2 >= gui->device->x_dim) return;
+   if (y1 >= gui->device->y_dim && y2 >= gui->device->y_dim) return;
+
    /* Is hardware acceleration available? */
    if ( gui->driver[DRIVER_DRAW_LINE].state & DRIVER_ENABLED )
    {
-      if( ((UG_RESULT(*)(UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_COLOR c))gui->driver[DRIVER_DRAW_LINE].driver)(x1,y1,x2,y2,c) == UG_RESULT_OK ) return;
+      /* Clip the line to device bounds before handing it to the driver,
+       * so the driver never receives out-of-range coordinates. */
+      UG_S32 cx1 = x1, cy1 = y1, cx2 = x2, cy2 = y2;
+      if (_UG_ClipLine(&cx1, &cy1, &cx2, &cy2,
+                       0, 0, gui->device->x_dim - 1, gui->device->y_dim - 1))
+      {
+         if( ((UG_RESULT(*)(UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_COLOR c))gui->driver[DRIVER_DRAW_LINE].driver)((UG_S16)cx1,(UG_S16)cy1,(UG_S16)cx2,(UG_S16)cy2,c) == UG_RESULT_OK ) return;
+      }
+      else
+      {
+         return;
+      }
    }
 
    dx = x2 - x1;
@@ -572,7 +684,9 @@ void UG_DrawLine( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_COLOR c )
    drawx = x1;
    drawy = y1;
 
-   gui->device->pset(drawx, drawy,c);
+   if (drawx >= 0 && drawx < gui->device->x_dim &&
+       drawy >= 0 && drawy < gui->device->y_dim)
+      gui->device->pset(drawx, drawy,c);
 
    if( dxabs >= dyabs )
    {
@@ -585,7 +699,9 @@ void UG_DrawLine( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_COLOR c )
             drawy += sgndy;
          }
          drawx += sgndx;
-         gui->device->pset(drawx, drawy,c);
+         if (drawx >= 0 && drawx < gui->device->x_dim &&
+             drawy >= 0 && drawy < gui->device->y_dim)
+            gui->device->pset(drawx, drawy,c);
       }
    }
    else
@@ -599,7 +715,9 @@ void UG_DrawLine( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_COLOR c )
             drawx += sgndx;
          }
          drawy += sgndy;
-         gui->device->pset(drawx, drawy,c);
+         if (drawx >= 0 && drawx < gui->device->x_dim &&
+             drawy >= 0 && drawy < gui->device->y_dim)
+            gui->device->pset(drawx, drawy,c);
       }
    }
 }
@@ -753,7 +871,7 @@ void UG_PutString( UG_S16 x, UG_S16 y, char* str )
          yp += line_h + gui->char_v_space;
       }
 
-      _UG_PutGlyph(&g, xp, yp, cur_fc, gui->back_color, gui->transparent_font);
+      _UG_PutGlyph(&g, xp, yp, cur_fc, gui->back_color, gui->transparent_font, NULL);
 
       xp += g.adv + gui->char_h_space;
    }
@@ -823,7 +941,7 @@ void UG_ConsolePutString( char* str )
       }
       _UG_PutGlyph(&g, gui->console.x_pos, y_draw,
                    gui->console.cur_fc, gui->console.back_color,
-                   gui->transparent_font);
+                   gui->transparent_font, NULL);
    }
    if((gui->driver[DRIVER_FILL_AREA].state & DRIVER_ENABLED))
      ((void*(*)(UG_S16, UG_S16, UG_S16, UG_S16))gui->driver[DRIVER_FILL_AREA].driver)(-1,-1,-1,-1);
@@ -961,6 +1079,25 @@ static UG_CHAR _UG_DecodeUTF8(char **str) {
     return (UG_CHAR)encoding;
 }
 #endif
+
+/* Read one character without tag parsing. Byte consumption matches
+ * _UG_NextCharEx for non-'{' characters. Used by the runs path where the
+ * string is already plain text. */
+static UG_S32 _UG_NextCharPlain( char** str )
+{
+    const UG_U8* p = (const UG_U8*)*str;
+    if (p[0] == 0) return 0;
+#ifdef UGUI_USE_UTF8
+    if (!gui->currentFont.is_old_font) {
+        return (UG_S32)(UG_U16)_UG_DecodeUTF8(str);
+    }
+#endif
+    {
+        UG_CHAR ch = (UG_U8)p[0];
+        *str = (char*)(p + 1);
+        return (UG_S32)ch;
+    }
+}
 
 /*
  *  Load char bitmap address into p, return the font width
@@ -1126,35 +1263,251 @@ typedef struct {
     UG_U8  visible;          /* Non-zero if at least one pixel is visible           */
 } UG_CLIP;
 
-static UG_CLIP _UG_ClipGlyph(UG_S16 x0, UG_S16 y0, UG_U16 w, UG_U16 h)
+/*
+ * Compute the visible part of a glyph bounding box.
+ *
+ * Input:
+ *   x0,y0   top-left of the glyph bounding box (may be negative)
+ *   w,h     glyph bounding box size
+ *   clip    optional clip rectangle (closed interval, xe/ye inclusive).
+ *           If clip == NULL, only device bounds are used.
+ *
+ * Output:
+ *   X0,Y0,X1,Y1   visible rectangle, half-open [X0,X1) x [Y0,Y1)
+ *   ox,oy         local origin inside the glyph
+ *   vw,vh         visible width and height
+ *   visible       non-zero if at least one pixel is visible
+ *
+ * Math:
+ *   G = [x0, x0+w) x [y0, y0+h)
+ *   D = [0, dev_x) x [0, dev_y)
+ *   C = [clip.xs, clip.xe+1) x [clip.ys, clip.ye+1)
+ *   Visible = G ∩ D ∩ C
+ */
+static UG_CLIP _UG_ClipGlyph(UG_S32 x0, UG_S32 y0, UG_U16 w, UG_U16 h,
+                             const UG_AREA* clip)
 {
     UG_CLIP c;
-    UG_S16 x1 = x0 + (UG_S16)w;
-    UG_S16 y1 = y0 + (UG_S16)h;
+    UG_S32 gx0 = x0;
+    UG_S32 gy0 = y0;
+    UG_S32 gx1 = x0 + (UG_S32)w;           /* half-open */
+    UG_S32 gy1 = y0 + (UG_S32)h;           /* half-open */
 
-    c.X0 = x0; c.Y0 = y0; c.X1 = x1; c.Y1 = y1;
-    if (c.X0 < 0) c.X0 = 0;
-    if (c.Y0 < 0) c.Y0 = 0;
-    if (c.X1 > gui->device->x_dim) c.X1 = gui->device->x_dim;
-    if (c.Y1 > gui->device->y_dim) c.Y1 = gui->device->y_dim;
+    UG_S32 cx0 = 0;
+    UG_S32 cy0 = 0;
+    UG_S32 cx1 = gui->device->x_dim;       /* half-open device bound */
+    UG_S32 cy1 = gui->device->y_dim;
 
-    c.visible = (c.X0 < c.X1) && (c.Y0 < c.Y1);
-    c.ox = c.X0 - x0;
-    c.oy = c.Y0 - y0;
-    c.vw = c.X1 - c.X0;
-    c.vh = c.Y1 - c.Y0;
+    UG_S32 X0, Y0, X1, Y1;
+
+    if (clip != NULL) {
+        if (clip->xs > cx0) cx0 = clip->xs;
+        if (clip->ys > cy0) cy0 = clip->ys;
+        if ((UG_S32)clip->xe + 1 < cx1) cx1 = (UG_S32)clip->xe + 1;
+        if ((UG_S32)clip->ye + 1 < cy1) cy1 = (UG_S32)clip->ye + 1;
+    }
+
+    X0 = (gx0 > cx0) ? gx0 : cx0;
+    Y0 = (gy0 > cy0) ? gy0 : cy0;
+    X1 = (gx1 < cx1) ? gx1 : cx1;
+    Y1 = (gy1 < cy1) ? gy1 : cy1;
+
+    /* Empty intersection -> invisible, and DO NOT cast the possibly huge
+     * gx1/gy1 values to UG_S16. */
+    if (X0 >= X1 || Y0 >= Y1) {
+        c.X0 = c.Y0 = c.X1 = c.Y1 = 0;
+        c.ox = c.oy = 0;
+        c.vw = c.vh = 0;
+        c.visible = 0;
+        return c;
+    }
+
+    /* X0/Y0 come from max(gx0, cx0) with cx0 >= 0, so they are >= 0.
+     * X1/Y1 come from min(gx1, cx1) with cx1 <= device_x_dim (UG_S16).
+     * Both fit in UG_S16 here. */
+    c.X0 = (UG_S16)X0;
+    c.Y0 = (UG_S16)Y0;
+    c.X1 = (UG_S16)X1;
+    c.Y1 = (UG_S16)Y1;
+    c.ox = (UG_S16)(X0 - x0);
+    c.oy = (UG_S16)(Y0 - y0);
+    c.vw = (UG_S16)(X1 - X0);
+    c.vh = (UG_S16)(Y1 - Y0);
+    c.visible = 1;
     return c;
 }
+
+/*
+ * Fill a rectangle clipped to an optional clip rectangle and device bounds.
+ * Clip is a closed interval [clip->xs..clip->xe] x [clip->ys..clip->ye].
+ * If clip == NULL, only device bounds are used.
+ */
+void _UG_FillFrameClipped( UG_S32 x1, UG_S32 y1, UG_S32 x2, UG_S32 y2,
+                           UG_AREA* clip, UG_COLOR c )
+{
+    UG_S32 fx0, fy0, fx1, fy1;
+    UG_S32 cx0 = 0;
+    UG_S32 cy0 = 0;
+    UG_S32 cx1 = gui->device->x_dim - 1;   /* inclusive */
+    UG_S32 cy1 = gui->device->y_dim - 1;   /* inclusive */
+    UG_S32 t;
+
+    if (x1 > x2) { t = x1; x1 = x2; x2 = t; }
+    if (y1 > y2) { t = y1; y1 = y2; y2 = t; }
+
+    if (clip != NULL) {
+        if (clip->xs > cx0) cx0 = clip->xs;
+        if (clip->ys > cy0) cy0 = clip->ys;
+        if (clip->xe < cx1) cx1 = clip->xe;
+        if (clip->ye < cy1) cy1 = clip->ye;
+    }
+
+    fx0 = (x1 > cx0) ? x1 : cx0;
+    fy0 = (y1 > cy0) ? y1 : cy0;
+    fx1 = (x2 < cx1) ? x2 : cx1;
+    fy1 = (y2 < cy1) ? y2 : cy1;
+
+    if (fx0 > fx1 || fy0 > fy1) return;
+
+    /* fx0..fy1 are inside [0, device_dim-1] which fits UG_S16. */
+    UG_FillFrame((UG_S16)fx0, (UG_S16)fy0, (UG_S16)fx1, (UG_S16)fy1, c);
+}
+
+/*
+ * Draw a line clipped to an optional clip rectangle and device bounds.
+ * Clip is a closed interval [clip->xs..clip->xe] x [clip->ys..clip->ye].
+ * If clip == NULL, only device bounds are used.
+ *
+ * Bresenham with per-pixel clipping.
+ */
+void _UG_DrawLineClipped( UG_S32 x1, UG_S32 y1, UG_S32 x2, UG_S32 y2,
+                          UG_AREA* clip, UG_COLOR c )
+{
+    UG_S32 dx, dy, sgndx, sgndy, dxabs, dyabs;
+    UG_S32 x, y, drawx, drawy, n;
+    UG_S32 cx0 = 0, cy0 = 0;
+    UG_S32 cx1 = gui->device->x_dim - 1;
+    UG_S32 cy1 = gui->device->y_dim - 1;
+
+    if (clip != NULL) {
+        if (clip->xs > cx0) cx0 = clip->xs;
+        if (clip->ys > cy0) cy0 = clip->ys;
+        if (clip->xe < cx1) cx1 = clip->xe;
+        if (clip->ye < cy1) cy1 = clip->ye;
+    }
+    if (cx0 > cx1 || cy0 > cy1) return;
+
+    dx = x2 - x1;
+    dy = y2 - y1;
+    dxabs = (dx > 0) ? dx : -dx;
+    dyabs = (dy > 0) ? dy : -dy;
+    sgndx = (dx > 0) ? 1 : -1;
+    sgndy = (dy > 0) ? 1 : -1;
+    x = dyabs >> 1;
+    y = dxabs >> 1;
+    drawx = x1;
+    drawy = y1;
+
+    /* drawx / drawy are guaranteed to be inside [cx0..cx1] x [cy0..cy1]
+     * when we call pset, and that range fits in UG_S16. */
+    if (drawx >= cx0 && drawx <= cx1 && drawy >= cy0 && drawy <= cy1)
+        gui->device->pset((UG_S16)drawx, (UG_S16)drawy, c);
+
+    if (dxabs >= dyabs) {
+        for (n = 0; n < dxabs; n++) {
+            y += dyabs;
+            if (y >= dxabs) { y -= dxabs; drawy += sgndy; }
+            drawx += sgndx;
+            if (drawx >= cx0 && drawx <= cx1 && drawy >= cy0 && drawy <= cy1)
+                gui->device->pset((UG_S16)drawx, (UG_S16)drawy, c);
+        }
+    } else {
+        for (n = 0; n < dyabs; n++) {
+            x += dxabs;
+            if (x >= dyabs) { x -= dyabs; drawx += sgndx; }
+            drawy += sgndy;
+            if (drawx >= cx0 && drawx <= cx1 && drawy >= cy0 && drawy <= cy1)
+                gui->device->pset((UG_S16)drawx, (UG_S16)drawy, c);
+        }
+    }
+}
+
+void _UG_DrawFrameClipped( UG_S32 x1, UG_S32 y1, UG_S32 x2, UG_S32 y2,
+                           UG_AREA* clip, UG_COLOR c )
+{
+    _UG_DrawLineClipped(x1, y1, x2, y1, clip, c);
+    _UG_DrawLineClipped(x1, y2, x2, y2, clip, c);
+    _UG_DrawLineClipped(x1, y1, x1, y2, clip, c);
+    _UG_DrawLineClipped(x2, y1, x2, y2, clip, c);
+}
+
+void _UG_DrawMeshClipped( UG_S32 x1, UG_S32 y1, UG_S32 x2, UG_S32 y2,
+                          UG_U16 spacing, UG_AREA* clip, UG_COLOR c )
+{
+    UG_S32 p;
+    UG_S32 t;
+    if ( x2 < x1 ) { t = x1; x1 = x2; x2 = t; }
+    if ( y2 < y1 ) { t = y1; y1 = y2; y2 = t; }
+
+    if (spacing == 0) return;   /* guard against infinite loop */
+
+    for( p=y1; p<y2; p+=spacing )
+        _UG_DrawLineClipped(x1, p, x2, p, clip, c);
+    _UG_DrawLineClipped(x1, y2, x2, y2, clip, c);
+
+    for( p=x1; p<x2; p+=spacing )
+        _UG_DrawLineClipped(p, y1, p, y2, clip, c);
+    _UG_DrawLineClipped(x2, y1, x2, y2, clip, c);
+}
+
+void _UG_DrawBMPClipped( UG_S32 xp, UG_S32 yp, UG_BMP* bmp, UG_AREA* clip )
+{
+    UG_S32 x, y;
+    UG_S32 cx0 = 0, cy0 = 0;
+    UG_S32 cx1 = gui->device->x_dim - 1;
+    UG_S32 cy1 = gui->device->y_dim - 1;
+
+    if ( bmp->p == NULL ) return;
+    if ( clip != NULL ) {
+        if (clip->xs > cx0) cx0 = clip->xs;
+        if (clip->ys > cy0) cy0 = clip->ys;
+        if (clip->xe < cx1) cx1 = clip->xe;
+        if (clip->ye < cy1) cy1 = clip->ye;
+    }
+    if (cx0 > cx1 || cy0 > cy1) return;
+
+#if defined UGUI_USE_COLOR_RGB888 || defined UGUI_USE_COLOR_RGB565
+    if ( bmp->bpp == BMP_BPP_16 ) {
+        UG_U16 *p = (UG_U16*)bmp->p;
+        for (y = 0; y < (UG_S32)bmp->height; y++) {
+            for (x = 0; x < (UG_S32)bmp->width; x++) {
+                UG_S32 px = xp + x;
+                UG_S32 py = yp + y;
+                if (px >= cx0 && px <= cx1 && py >= cy0 && py <= cy1) {
+#if defined(UGUI_USE_COLOR_RGB888)
+                    gui->device->pset((UG_S16)px, (UG_S16)py, _UG_ConvertRGB565ToRGB888(*p));
+#else
+                    gui->device->pset((UG_S16)px, (UG_S16)py, *p);
+#endif
+                }
+                p++;
+            }
+        }
+    }
+#endif
+}
+
 
 /* -------------------------------------------------------------------------------- */
 /* -- Generic 1BPP blit: shared by body and shadow passes.                         */
 /* -------------------------------------------------------------------------------- */
 static void _UG_BlitGlyph1BPP(const UG_GLYPH *g,
-                              UG_S16 x0, UG_S16 y0,
+                              UG_S32 x0, UG_S32 y0,
                               UG_COLOR fg, UG_COLOR bg,
-                              UG_U8 transparent)
+                              UG_U8 transparent,
+                              const UG_AREA* clip)
 {
-    UG_CLIP c = _UG_ClipGlyph(x0, y0, g->w, g->h);
+    UG_CLIP c = _UG_ClipGlyph(x0, y0, g->w, g->h, clip);
     if (!c.visible) return;
 
     UG_U16 bytes_per_row = (g->w + 7) / 8;
@@ -1186,13 +1539,14 @@ static void _UG_BlitGlyph1BPP(const UG_GLYPH *g,
 /* -------------------------------------------------------------------------------- */
 /* -- Glyph rendering: shadow first, then the body.                                */
 /* -------------------------------------------------------------------------------- */
-static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COLOR bc, UG_U8 trans )
+static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S32 x, UG_S32 y, UG_COLOR fc, UG_COLOR bc,
+                            UG_U8 trans, UG_AREA* clip )
 {
     if (g->w == 0 || g->h == 0)
         return (UG_S16)g->adv;
 
-    UG_S16 draw_x = x + g->x_off;
-    UG_S16 draw_y = y - g->y_off;
+    UG_S32 draw_x = x + (UG_S32)g->x_off;
+    UG_S32 draw_y = y - (UG_S32)g->y_off;
 
     UG_U8 driver = (gui->driver[DRIVER_FILL_AREA].state & DRIVER_ENABLED);
 
@@ -1201,8 +1555,11 @@ static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COL
 
         /* ---------- Body pass ---------- */
         if (driver) {
-            /* ---- Hardware acceleration: keep the original FILL_AREA logic ---- */
-            UG_CLIP c = _UG_ClipGlyph(draw_x, draw_y, g->w, g->h);
+            /* ---- Hardware acceleration: keep the original FILL_AREA logic ----
+             * The clip rectangle is applied before pushing pixels: the
+             * FILL_AREA driver receives the already-clipped bounding box
+             * (c.X0, c.Y0, c.X1-1, c.Y1-1) and must not draw outside it. */
+            UG_CLIP c = _UG_ClipGlyph(draw_x, draw_y, g->w, g->h, clip);
             if (c.visible) {
                 UG_U16 bytes_per_row = (g->w + 7) / 8;
                 UG_S16 x0 = 0, y0 = 0, fpixels = 0, bpixels = 0;
@@ -1292,15 +1649,15 @@ static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COL
         } else {
             /* ---- No hardware acceleration ----
              * Draw order (mathematically correct):
-             *   1. background (bc) over whole bbox, if opaque
+             *   1. background (bc) over the CLIPPED bbox, if opaque
              *   2. shadow ink, offset (+1,+1)
              *   3. body ink, at (0,0), ink only (background already drawn in step 1)
              */
             if (!trans) {
-                UG_FillFrame(draw_x, draw_y,
-                             draw_x + (UG_S16)g->w - 1,
-                             draw_y + (UG_S16)g->h - 1,
-                             bc);
+                _UG_FillFrameClipped(draw_x, draw_y,
+                                     draw_x + (UG_S32)g->w - 1,
+                                     draw_y + (UG_S32)g->h - 1,
+                                     clip, bc);
             }
 
             if (gui->shadow_font) {
@@ -1311,17 +1668,17 @@ static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COL
                     _UG_BlitGlyph1BPP(g,
                                       draw_x + 1, draw_y + 1,
                                       shadow_color, shadow_color,
-                                      1 /* ink only */);
+                                      1 /* ink only */, clip);
                 } else if (gui->shadow_font == 2) {
                     /* Outline: 8 directions */
-                    UG_S16 dx, dy;
+                    UG_S32 dx, dy;
                     for (dy = -1; dy <= 1; dy++) {
                         for (dx = -1; dx <= 1; dx++) {
                             if (dx == 0 && dy == 0) continue;
                             _UG_BlitGlyph1BPP(g,
                                               draw_x + dx, draw_y + dy,
                                               shadow_color, shadow_color,
-                                              1 /* ink only */);
+                                              1 /* ink only */, clip);
                         }
                     }
                 }
@@ -1330,13 +1687,13 @@ static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COL
             _UG_BlitGlyph1BPP(g,
                               draw_x, draw_y,
                               fc, bc,
-                              1 /* ink only, background already drawn in step 1 */);
+                              1 /* ink only, background already drawn in step 1 */, clip);
         }
     }
 #if defined(UGUI_USE_COLOR_RGB888) || defined(UGUI_USE_COLOR_RGB565)
     else {
         /* ================= 8BPP grayscale fonts ================= */
-        UG_CLIP c = _UG_ClipGlyph(draw_x, draw_y, g->w, g->h);
+        UG_CLIP c = _UG_ClipGlyph(draw_x, draw_y, g->w, g->h, clip);
         if (c.visible) {
             void (*push_pixels)(UG_U16, UG_COLOR) = NULL;
             if (driver) {
@@ -1368,12 +1725,12 @@ static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COL
     return (UG_S16)g->adv;
 }
 
-UG_S16 _UG_PutChar( UG_CHAR chr, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COLOR bc )
+UG_S16 _UG_PutChar( UG_CHAR chr, UG_S32 x, UG_S32 y, UG_COLOR fc, UG_COLOR bc )
 {
     UG_GLYPH g;
     if (_UG_GetGlyph(chr, &g) != 0)
         return -1;
-    return _UG_PutGlyph(&g, x, y, fc, bc, gui->transparent_font);
+    return _UG_PutGlyph(&g, x, y, fc, bc, gui->transparent_font, NULL);
 }
 
 #ifdef UGUI_USE_TOUCH
@@ -1525,6 +1882,150 @@ static void _UG_HandleEvents( UG_WINDOW* wnd )
 /* -- INTERNAL API FUNCTIONS                                                         -- */
 /* -------------------------------------------------------------------------------- */
 
+/*
+ * Measure the pixel width of one line of text.
+ *
+ * Reads from *str until '\n' or '\0'. On return, *str points past the
+ * terminator if one was found ('\n' consumed, '\0' left at end).
+ *
+ * The returned width is the sum of glyph advances plus h_space between
+ * characters, NOT including a trailing h_space:
+ *   width = Σ(g_i.adv) + (n-1) * h_space
+ *
+ * Missing glyphs contribute notdef_adv (or max_ink_w if notdef_adv == 0).
+ * Inline color tags ({#...}) are skipped and contribute nothing.
+ *
+ * runs == NULL  -> markup mode, parse {#...} tags.
+ * runs != NULL  -> plain text, no tags.
+ *
+ * This function must consume bytes EXACTLY like _UG_DrawTextLine so that
+ * measuring and drawing stay in sync.
+ */
+UG_S32 _UG_MeasureTextLine( char** str, UG_FONT* font, UG_S16 h_space,
+                            UG_ColorRun* runs )
+{
+    UG_S32 wl = 0;
+    UG_S16 first = 1;
+    UG_GLYPH g;
+    UG_COLOR dummy_fc = 0;
+    char* s = *str;
+
+    _UG_FontSelect(font);
+
+    while (1) {
+        UG_S32 ch;
+        if (runs == NULL) {
+            ch = _UG_NextCharEx(&s, &dummy_fc, dummy_fc);
+            if (ch == 0) break;
+            if (ch < 0) continue;
+        } else {
+            ch = _UG_NextCharPlain(&s);
+            if (ch == 0) break;
+        }
+        if ((UG_CHAR)ch == '\n') break;
+
+        if (_UG_GetGlyph((UG_CHAR)ch, &g) != 0) {
+            UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
+            if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
+            if (!first) wl += h_space;
+            wl += adv;
+        } else {
+            if (!first) wl += h_space;
+            wl += (UG_S32)g.adv;
+        }
+        first = 0;
+    }
+
+    *str = s;
+    return wl;
+}
+
+/*
+ * Draw one line of text starting at (x, baseline).
+ *
+ * Reads from *str until '\n' or '\0'. On return, *str points past the
+ * terminator.
+ *
+ * cur_fc : persistent foreground color, updated by inline tags in markup
+ *          mode. Caller must keep it across calls so color tags span lines.
+ * def_fc : default color, used by {#} and by runs mode.
+ *
+ * runs == NULL  -> markup mode, parse {#...} tags. *char_index unused.
+ * runs != NULL  -> plain text. *char_index advanced per char and per '\n'.
+ *
+ * Returns the x coordinate after the last drawn character (i.e. where the
+ * next character would start).
+ *
+ * Byte consumption MUST match _UG_MeasureTextLine exactly.
+ */
+UG_S32 _UG_DrawTextLine( char** str, UG_S32 x, UG_S32 baseline,
+                         UG_COLOR* cur_fc, UG_COLOR def_fc,
+                         UG_COLOR bc, UG_FONT* font,
+                         UG_ColorRun* runs, UG_U16 run_count,
+                         UG_U16* char_index,
+                         UG_AREA* clip, UG_S16 h_space )
+{
+    UG_GLYPH g;
+    UG_S32 xp = x;
+    UG_U8  markup = (runs == NULL) ? 1 : 0;
+    UG_U16 run_cur = 0;
+    char* s = *str;
+
+    _UG_FontSelect(font);
+
+    if (!markup && char_index != NULL) {
+        while (run_cur < run_count && *char_index >= runs[run_cur].end) {
+            run_cur++;
+        }
+    }
+
+    while (1) {
+        UG_CHAR chr;
+        UG_COLOR line_fc;
+
+        if (markup) {
+            UG_S32 ch = _UG_NextCharEx(&s, cur_fc, def_fc);
+            if (ch == 0) break;
+            if (ch < 0) continue;
+            chr = (UG_CHAR)ch;
+            if (chr == '\n') break;
+            line_fc = *cur_fc;
+        } else {
+            UG_S32 ch = _UG_NextCharPlain(&s);
+            if (ch == 0) break;
+            chr = (UG_CHAR)ch;
+            if (chr == '\n') { if (char_index) (*char_index)++; break; }
+
+            while (run_cur < run_count &&
+                   char_index != NULL &&
+                   *char_index >= runs[run_cur].end) {
+                run_cur++;
+            }
+            if (run_cur < run_count && char_index != NULL &&
+                *char_index >= runs[run_cur].start) {
+                line_fc = runs[run_cur].fc;
+            } else {
+                line_fc = def_fc;
+            }
+        }
+
+        if (_UG_GetGlyph(chr, &g) != 0) {
+            UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
+            if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
+            xp += (UG_S32)adv + h_space;
+        } else {
+            _UG_PutGlyph(&g, xp, baseline, line_fc, bc,
+                         gui->transparent_font, clip);
+            xp += (UG_S32)g.adv + h_space;
+        }
+
+        if (!markup && char_index) (*char_index)++;
+    }
+
+    *str = s;
+    return xp;
+}
+
 void _UG_PutText(UG_TEXT* txt)
 {
    if(!txt->font || !txt->str){
@@ -1533,6 +2034,11 @@ void _UG_PutText(UG_TEXT* txt)
 
    UG_S16 ye=txt->a.ye;
    UG_S16 ys=txt->a.ys;
+   UG_S16 xs=txt->a.xs;
+   UG_S16 xe=txt->a.xe;
+   UG_U8  align=txt->align;
+   UG_S16 char_h_space=txt->h_space;
+   UG_S16 char_v_space=txt->v_space;
 
    _UG_FontSelect(txt->font);
    /* Industry standard: line height = ascender - descender */
@@ -1545,56 +2051,44 @@ void _UG_PutText(UG_TEXT* txt)
      return;
    }
 
-   UG_U16 rc;
-   UG_S16 xp,yp;
-   UG_S16 xs=txt->a.xs;
-   UG_S16 xe=txt->a.xe;
-   UG_U8  align=txt->align;
-   UG_S16 char_h_space=txt->h_space;
-   UG_S16 char_v_space=txt->v_space;
-   UG_GLYPH g;
-   UG_CHAR chr;
-   char* str = txt->str;
-   char* c = str;
    /* markup = 1 : str may contain inline tags, parse per frame
     * markup = 0 : str is plain text, runs[] drives colors (zero parse) */
    UG_U8  markup = (txt->runs == NULL) ? 1 : 0;
 
    /* Cross-line persistent state. For the markup path only cur_fc is used;
-    * for the runs path char_index and run_cur are also used. */
+    * for the runs path char_index is also used. */
    UG_COLOR cur_fc = txt->fc;
-   UG_U16 char_index = 0;
-   UG_U16 run_cur = 0;
+
+   /* Optional clip rectangle. */
+   UG_AREA clip_buf;
+   UG_AREA* clip = NULL;
+   if (txt->use_clip) {
+      clip_buf = txt->clip;
+      clip = &clip_buf;
+   }
 
    /* ---- Count lines (rc) ---- */
-   rc=1;
-   c=str;
-   if (markup) {
-      UG_COLOR tmp = txt->fc;
-      while (1) {
-         UG_S32 ch = _UG_NextCharEx(&c, &tmp, txt->fc);
-         if (ch == 0) break;
-         if (ch < 0) continue;
-         if ((UG_CHAR)ch == '\n') rc++;
-      }
-   } else {
-      while (1) {
-         #ifdef UGUI_USE_UTF8
-         if(! gui->currentFont.is_old_font){
-           chr = _UG_DecodeUTF8(&c);
+   UG_U16 rc = 1;
+   {
+      char* c = txt->str;
+      if (markup) {
+         UG_COLOR tmp = txt->fc;
+         while (1) {
+            UG_S32 ch = _UG_NextCharEx(&c, &tmp, txt->fc);
+            if (ch == 0) break;
+            if (ch < 0) continue;
+            if ((UG_CHAR)ch == '\n') rc++;
          }
-         else{
-           chr = (UG_U8)*c++;
+      } else {
+         while (1) {
+            UG_S32 ch = _UG_NextCharPlain(&c);
+            if (ch == 0) break;
+            if ((UG_CHAR)ch == '\n') rc++;
          }
-         #else
-         chr = *c++;
-         #endif
-         if(!chr) break;
-         if ( chr == '\n' ) rc++;
       }
    }
 
-   yp = 0;
+   UG_S32 yp = 0;
    if ( align & (ALIGN_V_CENTER | ALIGN_V_BOTTOM) )
    {
       yp = ye - ys + 1;
@@ -1612,124 +2106,36 @@ void _UG_PutText(UG_TEXT* txt)
       yp += (UG_S16)gui->currentFont.ascender;
    }
 
+   UG_U16 char_index = 0;
+   char* str = txt->str;
+
    while( 1 )
    {
-      UG_U16 wl = 0;
-      c=str;
+      UG_S32 wl;
+      UG_S32 xp;
+      char* c = str;
+
       /* ---- Measure line width (wl) ---- */
-      if (markup) {
-         UG_COLOR tmp = txt->fc;
-         while(1)
-         {
-            UG_S32 ch = _UG_NextCharEx(&c, &tmp, txt->fc);
-            if (ch == 0) break;
-            if (ch < 0) continue;
-            chr = (UG_CHAR)ch;
-            if (chr == '\n') break;
-            if (_UG_GetGlyph(chr, &g) != 0) {
-                UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
-                if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
-                wl += adv + char_h_space;
-                continue;
-            }
-            wl += g.adv + char_h_space;
-         }
-      } else {
-         while(1)
-         {
-           #ifdef UGUI_USE_UTF8
-           if(! gui->currentFont.is_old_font){
-             chr = _UG_DecodeUTF8(&c);
-           }
-           else{
-             chr = (UG_U8)*c++;
-           }
-           #else
-           chr = *c++;
-           #endif
-           if( chr == 0 || chr == '\n'){ break; }
-           if (_UG_GetGlyph(chr, &g) != 0) {
-               UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
-               if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
-               wl += adv + char_h_space;
-               continue;
-           }
-           wl += g.adv + char_h_space;
-         }
-      }
-      if (wl >= (UG_U16)char_h_space) wl -= (UG_U16)char_h_space;
-      else                             wl = 0;
+      wl = _UG_MeasureTextLine(&c, txt->font, char_h_space, txt->runs);
 
       xp = xe - xs + 1;
       xp -= wl;
-      if ( xp < 0 ) break;
-
+      /* If content is wider than the box, xp is negative. Keep it
+       * negative so clipping trims both sides symmetrically for
+       * ALIGN_H_CENTER, and the right side for ALIGN_H_LEFT.
+       * Old code did `if (xp < 0) break;` which dropped the whole line
+       * and all subsequent lines. */
       if ( align & ALIGN_H_LEFT ) xp = 0;
       else if ( align & ALIGN_H_CENTER ) xp >>= 1;
       xp += xs;
 
       /* ---- Render current line ---- */
-      if (markup) {
-         /* Per-frame tag parse path. cur_fc persists across lines. */
-         while(1) {
-            UG_S32 ch = _UG_NextCharEx(&str, &cur_fc, txt->fc);
-            if (ch == 0) return;
-            if (ch < 0) continue;
-            chr = (UG_CHAR)ch;
-            if (chr == '\n') break;
-            if (_UG_GetGlyph(chr, &g) != 0) {
-                UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
-                if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
-                xp += adv + char_h_space;
-                continue;
-            }
-            _UG_PutGlyph(&g, xp, yp, cur_fc, txt->bc, gui->transparent_font);
-            xp += g.adv + char_h_space;
-         }
-      } else {
-         /* Pre-decoded path: plain text + runs[], zero parse.
-          * char_index / run_cur persist across lines. */
-         UG_COLOR line_fc = txt->fc;
-         while(1) {
-            #ifdef UGUI_USE_UTF8
-            if(! gui->currentFont.is_old_font){
-              chr = _UG_DecodeUTF8(&str);
-            }
-            else{
-              chr = (UG_U8)*str++;
-            }
-            #else
-            chr = *str++;
-            #endif
-            if ( chr == 0 ) return;
-            if (chr == '\n') { char_index++; break; }
+      xp = _UG_DrawTextLine(&str, xp, yp, &cur_fc, txt->fc, txt->bc,
+                            txt->font, txt->runs, txt->run_count,
+                            &char_index, clip, char_h_space);
 
-            /* Advance run cursor past all finished runs. */
-            while (run_cur < txt->run_count &&
-                   char_index >= txt->runs[run_cur].end) {
-               run_cur++;
-            }
-            /* Pick color: run color if char falls inside current run,
-             * otherwise default txt->fc. */
-            if (run_cur < txt->run_count &&
-                char_index >= txt->runs[run_cur].start) {
-               line_fc = txt->runs[run_cur].fc;
-            } else {
-               line_fc = txt->fc;
-            }
+      if (*str == '\0') break;
 
-            if (_UG_GetGlyph(chr, &g) != 0) {
-                UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
-                if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
-                xp += adv + char_h_space;
-                char_index++;
-                continue;
-            }
-            _UG_PutGlyph(&g, xp, yp, line_fc, txt->bc, gui->transparent_font);
-            xp += g.adv + char_h_space;
-            char_index++;
-         }
-      }
       yp += char_height + char_v_space;
    }
 }
@@ -1771,6 +2177,26 @@ void _UG_DrawObjectFrame( UG_S16 xs, UG_S16 ys, UG_S16 xe, UG_S16 ye, UG_COLOR* 
    UG_DrawLine(xs+2, ys+3, xs+2, ye-3, *p++);
    UG_DrawLine(xs+2, ye-2, xe-2, ye-2, *p++);
    UG_DrawLine(xe-2, ys+2, xe-2, ye-3, *p);
+}
+
+void _UG_DrawObjectFrameClipped( UG_S32 xs, UG_S32 ys, UG_S32 xe, UG_S32 ye,
+                                 UG_AREA* clip, UG_COLOR* p )
+{
+   // Frame 0
+   _UG_DrawLineClipped(xs, ys  , xe-1, ys  , clip, *p++);
+   _UG_DrawLineClipped(xs, ys+1, xs  , ye-1, clip, *p++);
+   _UG_DrawLineClipped(xs, ye  , xe  , ye  , clip, *p++);
+   _UG_DrawLineClipped(xe, ys  , xe  , ye-1, clip, *p++);
+   // Frame 1
+   _UG_DrawLineClipped(xs+1, ys+1, xe-2, ys+1, clip, *p++);
+   _UG_DrawLineClipped(xs+1, ys+2, xs+1, ye-2, clip, *p++);
+   _UG_DrawLineClipped(xs+1, ye-1, xe-1, ye-1, clip, *p++);
+   _UG_DrawLineClipped(xe-1, ys+1, xe-1, ye-2, clip, *p++);
+   // Frame 2
+   _UG_DrawLineClipped(xs+2, ys+2, xe-3, ys+2, clip, *p++);
+   _UG_DrawLineClipped(xs+2, ys+3, xs+2, ye-3, clip, *p++);
+   _UG_DrawLineClipped(xs+2, ye-2, xe-2, ye-2, clip, *p++);
+   _UG_DrawLineClipped(xe-2, ys+2, xe-2, ye-3, clip, *p);
 }
 
 UG_OBJECT* _UG_GetFreeObject( UG_WINDOW* wnd )
@@ -2120,44 +2546,59 @@ void UG_DrawBMP( UG_S16 xp, UG_S16 yp, UG_BMP* bmp )
    #if defined UGUI_USE_COLOR_RGB888 || defined UGUI_USE_COLOR_RGB565
    if ( bmp->bpp == BMP_BPP_16){
 
-     /* Is hardware acceleration available? */
+     /* Only use the hardware driver if the whole BMP fits inside the
+      * device. If it is partially off-screen, fall through to the
+      * per-pixel path which clamps each pixel. */
+     int bmp_fits =
+         (xp >= 0 && yp >= 0 &&
+          (UG_S32)xp + (UG_S32)bmp->width  <= gui->device->x_dim &&
+          (UG_S32)yp + (UG_S32)bmp->height <= gui->device->y_dim);
 
-      if ( gui->driver[DRIVER_DRAW_BMP].state & DRIVER_ENABLED)
-      {
-        ((void(*)(UG_S16, UG_S16, UG_BMP* bmp))gui->driver[DRIVER_DRAW_BMP].driver)(xp,yp, bmp);
-        return;
-      }
-      else if ( gui->driver[DRIVER_FILL_AREA].state & DRIVER_ENABLED)
-      {
-         void(*push_pixels)(UG_U16, UG_COLOR) = ((void*(*)(UG_S16, UG_S16, UG_S16, UG_S16))gui->driver[DRIVER_FILL_AREA].driver)(xp,yp,xp+bmp->width-1,yp+bmp->height-1);
-         UG_U16 *p = (UG_U16*)bmp->p;
-         for(y=0;y<bmp->height;y++)
-         {
-           for(x=0;x<bmp->width;x++)
+     if (bmp_fits)
+     {
+        /* Is hardware acceleration available? */
+        if ( gui->driver[DRIVER_DRAW_BMP].state & DRIVER_ENABLED)
+        {
+          ((void(*)(UG_S16, UG_S16, UG_BMP* bmp))gui->driver[DRIVER_DRAW_BMP].driver)(xp,yp, bmp);
+          return;
+        }
+        else if ( gui->driver[DRIVER_FILL_AREA].state & DRIVER_ENABLED)
+        {
+           void(*push_pixels)(UG_U16, UG_COLOR) = ((void*(*)(UG_S16, UG_S16, UG_S16, UG_S16))gui->driver[DRIVER_FILL_AREA].driver)(xp,yp,xp+bmp->width-1,yp+bmp->height-1);
+           UG_U16 *p = (UG_U16*)bmp->p;
+           for(y=0;y<bmp->height;y++)
            {
-             #ifdef UGUI_USE_COLOR_RGB888
-             push_pixels(1, _UG_ConvertRGB565ToRGB888(*p++)); /* Convert RGB565 to RGB888 */
-             #elif defined UGUI_USE_COLOR_RGB565
-             push_pixels(1, *p++);
-             #endif
+             for(x=0;x<bmp->width;x++)
+             {
+               #ifdef UGUI_USE_COLOR_RGB888
+               push_pixels(1, _UG_ConvertRGB565ToRGB888(*p++)); /* Convert RGB565 to RGB888 */
+               #elif defined UGUI_USE_COLOR_RGB565
+               push_pixels(1, *p++);
+               #endif
+             }
            }
-           yp++;
-         }
-         return;
-      }
+           return;
+        }
+     }
 
      UG_U16 *p = (UG_U16*)bmp->p;
      for(y=0;y<bmp->height;y++)
      {
+        UG_S16 py = yp + y;
         for(x=0;x<bmp->width;x++)
         {
+          UG_S16 px = xp + x;
+          if (px >= 0 && px < gui->device->x_dim &&
+              py >= 0 && py < gui->device->y_dim)
+          {
           #ifdef UGUI_USE_COLOR_RGB888
-           UG_DrawPixel( xp+x , yp , _UG_ConvertRGB565ToRGB888(*p++) ); /* Convert RGB565 to RGB888 */
+             gui->device->pset(px, py, _UG_ConvertRGB565ToRGB888(*p));
           #elif defined UGUI_USE_COLOR_RGB565
-           UG_DrawPixel( xp+x , yp , *p++ );
+             gui->device->pset(px, py, *p);
           #endif
+          }
+          p++;
         }
-        yp++;
      }
    }
    #endif
@@ -2843,6 +3284,12 @@ static UG_RESULT _UG_WindowDrawTitle( UG_WINDOW* wnd )
       txt.align = wnd->title.align;
       txt.h_space = wnd->title.h_space;
       txt.v_space = wnd->title.v_space;
+      /* Clip to the title bar area */
+      txt.clip.xs = xs;
+      txt.clip.ys = ys;
+      txt.clip.xe = xe;
+      txt.clip.ye = ys + wnd->title.height - 1;
+      txt.use_clip = 1;
       _UG_PutText( &txt );
 
       /* Draw line */

@@ -439,6 +439,7 @@ static void _UG_ButtonUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
 {
    UG_BUTTON* btn;
    UG_AREA a;
+   UG_AREA vis;
    UG_TEXT txt;
    UG_U8 d,o=0;
 
@@ -489,8 +490,14 @@ static void _UG_ButtonUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
             obj->a_abs.ys = obj->a_rel.ys + a.ys;
             obj->a_abs.xe = obj->a_rel.xe + a.xs;
             obj->a_abs.ye = obj->a_rel.ye + a.ys;
-            if ( obj->a_abs.ye > wnd->ye ) return;
-            if ( obj->a_abs.xe > wnd->xe ) return;
+
+            /* Visible rectangle = object rectangle ∩ window rectangle */
+            vis.xs = (obj->a_abs.xs > wnd->xs) ? obj->a_abs.xs : wnd->xs;
+            vis.ys = (obj->a_abs.ys > wnd->ys) ? obj->a_abs.ys : wnd->ys;
+            vis.xe = (obj->a_abs.xe < wnd->xe) ? obj->a_abs.xe : wnd->xe;
+            vis.ye = (obj->a_abs.ye < wnd->ye) ? obj->a_abs.ye : wnd->ye;
+            if (vis.xs > vis.xe || vis.ys > vis.ye) return;
+
 #ifdef UGUI_USE_PRERENDER_EVENT
             _UG_SendObjectPrerenderEvent(wnd, obj);
 #endif
@@ -518,13 +525,16 @@ static void _UG_ButtonUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
                }
             }
             if ( !(btn->style & BTN_STYLE_NO_FILL) )
-               UG_FillFrame(obj->a_abs.xs+d, obj->a_abs.ys+d, obj->a_abs.xe-d, obj->a_abs.ye-d, txt.bc);
+               _UG_FillFrameClipped(obj->a_abs.xs+d, obj->a_abs.ys+d,
+                                    obj->a_abs.xe-d, obj->a_abs.ye-d, &vis, txt.bc);
 
             /* Draw button text */
             txt.a.xs = obj->a_abs.xs+d+o;
             txt.a.ys = obj->a_abs.ys+d+o;
             txt.a.xe = obj->a_abs.xe-d+o;
             txt.a.ye = obj->a_abs.ye-d+o;
+            txt.clip = vis;
+            txt.use_clip = 1;
             txt.align = btn->align;
             txt.font = btn->font;
             txt.h_space = 2;
@@ -541,11 +551,11 @@ static void _UG_ButtonUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
          {
              if ( btn->style & BTN_STYLE_3D )
              {  /* 3D */
-                _UG_DrawObjectFrame(obj->a_abs.xs,obj->a_abs.ys,obj->a_abs.xe,obj->a_abs.ye, (btn->state&BTN_STATE_PRESSED)?(UG_COLOR*)pal_button_pressed:(UG_COLOR*)pal_button_released);
+                _UG_DrawObjectFrameClipped(obj->a_abs.xs,obj->a_abs.ys,obj->a_abs.xe,obj->a_abs.ye, &vis, (btn->state&BTN_STATE_PRESSED)?(UG_COLOR*)pal_button_pressed:(UG_COLOR*)pal_button_released);
              }
              else
              {  /* 2D */
-                 UG_DrawFrame(obj->a_abs.xs,obj->a_abs.ys,obj->a_abs.xe,obj->a_abs.ye,(btn->state&BTN_STATE_PRESSED)?btn->abc:btn->afc);
+                 _UG_DrawFrameClipped(obj->a_abs.xs,obj->a_abs.ys,obj->a_abs.xe,obj->a_abs.ye, &vis, (btn->state&BTN_STATE_PRESSED)?btn->abc:btn->afc);
              }
          }
       }

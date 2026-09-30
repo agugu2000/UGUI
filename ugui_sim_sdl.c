@@ -178,6 +178,19 @@ static void sdl_process(int *running, int *mouse_down)
                            TOUCH_STATE_PRESSED);
         }
 #endif
+        else if (e.type == SDL_KEYDOWN) {
+            switch (e.key.keysym.sym) {
+            case SDLK_UP:       GUI_HandleKey(GUI_KEY_UP);       break;
+            case SDLK_DOWN:     GUI_HandleKey(GUI_KEY_DOWN);     break;
+            case SDLK_LEFT:     GUI_HandleKey(GUI_KEY_LEFT);     break;
+            case SDLK_RIGHT:    GUI_HandleKey(GUI_KEY_RIGHT);    break;
+            case SDLK_PAGEUP:   GUI_HandleKey(GUI_KEY_PAGEUP);   break;
+            case SDLK_PAGEDOWN: GUI_HandleKey(GUI_KEY_PAGEDOWN); break;
+            case SDLK_HOME:     GUI_HandleKey(GUI_KEY_HOME);     break;
+            case SDLK_END:      GUI_HandleKey(GUI_KEY_END);      break;
+            default: break;
+            }
+        }
     }
 }
 
@@ -223,7 +236,7 @@ int main(int argc, char *argv[])
     while (running) {
         sdl_process(&running, &mouse_down);
         GUI_Process();
-        SDL_Delay(100);
+        SDL_Delay(16);
     }
 
     SDL_DestroyTexture(handle->tex);

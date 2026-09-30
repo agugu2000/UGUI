@@ -264,6 +264,9 @@ typedef struct
    char* str;
    UG_FONT* font;
    UG_AREA a;
+   UG_AREA clip;        /* Rendering clip rectangle, closed interval.
+                         * Only used when use_clip != 0. */
+   UG_U8  use_clip;     /* 0 = no clip (device bounds), 1 = use clip above. */
    UG_COLOR fc;
    UG_COLOR bc;
    UG_U8 align;
@@ -522,6 +525,8 @@ typedef struct
 #include "ugui_image.h"
 #include "ugui_progress.h"
 #include "ugui_textbox.h"
+#include "ugui_scrollbox.h"
+
 /* -------------------------------------------------------------------------------- */
 /* -- PROTOTYPES                                                                 -- */
 /* -------------------------------------------------------------------------------- */
@@ -585,6 +590,30 @@ void UG_DriverDisable( UG_U8 type );
 
 /* Internal API functions */
 void _UG_PutText( UG_TEXT* txt );
+/* Internal clipped drawing primitives (closed-interval clip, NULL = device).
+ * Coordinates are UG_S32 so that scrolled content far outside the screen
+ * still computes correctly. */
+void _UG_FillFrameClipped( UG_S32 x1, UG_S32 y1, UG_S32 x2, UG_S32 y2,
+                           UG_AREA* clip, UG_COLOR c );
+void _UG_DrawLineClipped( UG_S32 x1, UG_S32 y1, UG_S32 x2, UG_S32 y2,
+                          UG_AREA* clip, UG_COLOR c );
+void _UG_DrawFrameClipped( UG_S32 x1, UG_S32 y1, UG_S32 x2, UG_S32 y2,
+                           UG_AREA* clip, UG_COLOR c );
+void _UG_DrawObjectFrameClipped( UG_S32 xs, UG_S32 ys, UG_S32 xe, UG_S32 ye,
+                                 UG_AREA* clip, UG_COLOR* p );
+void _UG_DrawMeshClipped( UG_S32 x1, UG_S32 y1, UG_S32 x2, UG_S32 y2,
+                          UG_U16 spacing, UG_AREA* clip, UG_COLOR c );
+void _UG_DrawBMPClipped( UG_S32 xp, UG_S32 yp, UG_BMP* bmp, UG_AREA* clip );
+
+/* Internal text layout primitives, shared by textbox and scrollbox. */
+UG_S32 _UG_MeasureTextLine( char** str, UG_FONT* font, UG_S16 h_space,
+                            UG_ColorRun* runs );
+UG_S32 _UG_DrawTextLine( char** str, UG_S32 x, UG_S32 baseline,
+                         UG_COLOR* cur_fc, UG_COLOR def_fc,
+                         UG_COLOR bc, UG_FONT* font,
+                         UG_ColorRun* runs, UG_U16 run_count,
+                         UG_U16* char_index,
+                         UG_AREA* clip, UG_S16 h_space );
 UG_OBJECT* _UG_SearchObject( UG_WINDOW* wnd, UG_U8 type, UG_U8 id );
 void _UG_DrawObjectFrame( UG_S16 xs, UG_S16 ys, UG_S16 xe, UG_S16 ye, UG_COLOR* p );
 UG_OBJECT* _UG_GetFreeObject( UG_WINDOW* wnd );

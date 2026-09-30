@@ -295,6 +295,7 @@ static void _UG_TextboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
 {
    UG_TEXTBOX* txb;
    UG_AREA a;
+   UG_AREA vis;
    UG_TEXT txt;
 
    memset(&txt, 0, sizeof(txt));
@@ -317,8 +318,14 @@ static void _UG_TextboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
             obj->a_abs.ys = obj->a_rel.ys + a.ys;
             obj->a_abs.xe = obj->a_rel.xe + a.xs;
             obj->a_abs.ye = obj->a_rel.ye + a.ys;
-            if ( obj->a_abs.ye > wnd->ye ) return;
-            if ( obj->a_abs.xe > wnd->xe ) return;
+
+            /* Visible rectangle = object rectangle ∩ window rectangle */
+            vis.xs = (obj->a_abs.xs > wnd->xs) ? obj->a_abs.xs : wnd->xs;
+            vis.ys = (obj->a_abs.ys > wnd->ys) ? obj->a_abs.ys : wnd->ys;
+            vis.xe = (obj->a_abs.xe < wnd->xe) ? obj->a_abs.xe : wnd->xe;
+            vis.ye = (obj->a_abs.ye < wnd->ye) ? obj->a_abs.ye : wnd->ye;
+            if (vis.xs > vis.xe || vis.ys > vis.ye) return;
+
 #ifdef UGUI_USE_PRERENDER_EVENT
             _UG_SendObjectPrerenderEvent(wnd, obj);
 #endif
@@ -326,13 +333,16 @@ static void _UG_TextboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
             txt.bc = txb->bc;
             txt.fc = txb->fc;
 
-            UG_FillFrame(obj->a_abs.xs, obj->a_abs.ys, obj->a_abs.xe, obj->a_abs.ye, txt.bc);
+            _UG_FillFrameClipped(obj->a_abs.xs, obj->a_abs.ys,
+                                 obj->a_abs.xe, obj->a_abs.ye, &vis, txt.bc);
 
             /* Draw Textbox text */
             txt.a.xs = obj->a_abs.xs;
             txt.a.ys = obj->a_abs.ys;
             txt.a.xe = obj->a_abs.xe;
             txt.a.ye = obj->a_abs.ye;
+            txt.clip = vis;
+            txt.use_clip = 1;
             txt.align = txb->align;
             txt.font = txb->font;
             txt.h_space = txb->h_space;

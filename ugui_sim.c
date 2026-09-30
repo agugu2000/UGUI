@@ -22,6 +22,7 @@
 #define MAX_OBJS_PAGE2      30
 #define MAX_OBJS_PAGE3      15
 #define MAX_OBJS_PAGE4      15
+#define MAX_OBJS_PAGE5      15
 
 /* -------------------------------------------------------------------------------- */
 /* -- UI text constants                                                           -- */
@@ -32,12 +33,14 @@
 #define TXT_TITLE_P2            "Page 2: Styles"
 #define TXT_TITLE_P3            "Page 3: Draw"
 #define TXT_TITLE_P4            "Page 4: Color"
+#define TXT_TITLE_P5            "Page 5: Scrollbox"
 
 /* Page switch buttons */
 #define TXT_BTN_P1              "第1页"
 #define TXT_BTN_P2              "第2页"
 #define TXT_BTN_P3              "第3页"
 #define TXT_BTN_P4              "第4页"
+#define TXT_BTN_P5              "第5页"
 
 /* Page 1 */
 #define TXT_BTN_START           "开始"
@@ -96,6 +99,36 @@
 #define TXT_C5  "Bad tag {#xyz} stays literal"
 #define TXT_C6  "Button text {#FF0000}red{#00FF00}green{#}"
 
+/* Page 5 — scrollbox demo */
+#define TXT_SCB_LABEL \
+    "Scrollbox demo: arrows to scroll, L/R for hstep, PgUp/PgDn/Home/End"
+#define TXT_SCB_LONG \
+    "Line 01: The quick brown fox jumps over the lazy dog.\n" \
+    "Line 02: {#FF0000}Red text{#} followed by {#00FF00}green{#} and {#0000FF}blue{#}.\n" \
+    "Line 03: 中文测试，滚动盒子应该能正确显示。\n" \
+    "Line 04: This is a fairly long line that will overflow horizontally so you can test the horizontal scrollbar.\n" \
+    "Line 05: Line 05.\n" \
+    "Line 06: Line 06.\n" \
+    "Line 07: Line 07.\n" \
+    "Line 08: Line 08.\n" \
+    "Line 09: Line 09.\n" \
+    "Line 10: Line 10.\n" \
+    "Line 11: Line 11.\n" \
+    "Line 12: Line 12.\n" \
+    "Line 13: Line 13.\n" \
+    "Line 14: Line 14.\n" \
+    "Line 15: Line 15.\n" \
+    "Line 16: Line 16.\n" \
+    "Line 17: Line 17.\n" \
+    "Line 18: Line 18.\n" \
+    "Line 19: Line 19.\n" \
+    "Line 20: Line 20.\n" \
+    "Line 21: Line 21.\n" \
+    "Line 22: Line 22.\n" \
+    "Line 23: Line 23.\n" \
+    "Line 24: Line 24.\n" \
+    "Line 25: Line 25 — the end."
+
 /* -------------------------------------------------------------------------------- */
 /* -- BMP test pattern colors                                                     -- */
 /* -------------------------------------------------------------------------------- */
@@ -115,7 +148,7 @@
 static simcfg_t *simCfg = NULL;
 
 static UG_GUI    ugui;
-static UG_WINDOW wnd1, wnd2, wnd3, wnd4;
+static UG_WINDOW wnd1, wnd2, wnd3, wnd4, wnd5;
 
 /* Page 1 objects */
 static UG_PROGRESS pgb_status;
@@ -126,27 +159,33 @@ static UG_PROGRESS pgb_speed, pgb_level;
 static UG_TEXTBOX  txb_info;
 static UG_IMAGE    img_test;
 static UG_TEXTBOX  txb_img_label;
-static UG_BUTTON   btn_p1_1, btn_p1_2, btn_p1_3, btn_p1_4;
+static UG_BUTTON   btn_p1_1, btn_p1_2, btn_p1_3, btn_p1_4, btn_p1_5;
 
 /* Page 2 objects */
 static UG_BUTTON   btn_s1, btn_s2, btn_s3, btn_s4, btn_s5, btn_s6;
 static UG_CHECKBOX chb_s1, chb_s2, chb_s3, chb_s4, chb_s5, chb_s6;
 static UG_PROGRESS pgb_s1, pgb_s2, pgb_s3, pgb_s4, pgb_s5;
 static UG_TEXTBOX  txb_a1, txb_a2, txb_a3, txb_a4, txb_a5, txb_a6;
-static UG_BUTTON   btn_p2_1, btn_p2_2, btn_p2_3, btn_p2_4;
+static UG_BUTTON   btn_p2_1, btn_p2_2, btn_p2_3, btn_p2_4, btn_p2_5;
 
 /* Page 3 objects */
 static UG_TEXTBOX  txb_p3_1, txb_p3_2, txb_p3_3, txb_p3_4;
-static UG_BUTTON   btn_p3_1, btn_p3_2, btn_p3_3, btn_p3_4;
+static UG_BUTTON   btn_p3_1, btn_p3_2, btn_p3_3, btn_p3_4, btn_p3_5;
 
 /* Page 4 objects */
 static UG_TEXTBOX  txb_c1, txb_c2, txb_c3, txb_c4, txb_c5, txb_c6;
-static UG_BUTTON   btn_p4_1, btn_p4_2, btn_p4_3, btn_p4_4;
+static UG_BUTTON   btn_p4_1, btn_p4_2, btn_p4_3, btn_p4_4, btn_p4_5;
+
+/* Page 5 objects */
+static UG_SCROLLBOX scb_main;
+static UG_TEXTBOX   txb_scb_label;
+static UG_BUTTON    btn_p5_1, btn_p5_2, btn_p5_3, btn_p5_4, btn_p5_5;
 
 static UG_OBJECT   objs1[MAX_OBJS_PAGE1];
 static UG_OBJECT   objs2[MAX_OBJS_PAGE2];
 static UG_OBJECT   objs3[MAX_OBJS_PAGE3];
 static UG_OBJECT   objs4[MAX_OBJS_PAGE4];
+static UG_OBJECT   objs5[MAX_OBJS_PAGE5];
 
 /* Runtime state */
 static UG_U8 g_running = 0;
@@ -426,25 +465,30 @@ static void setup_page1(void)
     UG_TextboxSetAlignment(&wnd1, TXB_ID_2, ALIGN_CENTER_LEFT);
 
     /* Page switch buttons */
-    UG_ButtonCreate(&wnd1, &btn_p1_1, BTN_ID_17, UGUI_POS(10, 550, 120, 35));
+    UG_ButtonCreate(&wnd1, &btn_p1_1, BTN_ID_15, UGUI_POS(10, 550, 120, 35));
+    UG_ButtonSetFont(&wnd1, BTN_ID_15, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd1, BTN_ID_15, TXT_BTN_P1);
+    UG_ButtonSetStyle(&wnd1, BTN_ID_15, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd1, &btn_p1_2, BTN_ID_16, UGUI_POS(140, 550, 120, 35));
+    UG_ButtonSetFont(&wnd1, BTN_ID_16, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd1, BTN_ID_16, TXT_BTN_P2);
+    UG_ButtonSetStyle(&wnd1, BTN_ID_16, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd1, &btn_p1_3, BTN_ID_17, UGUI_POS(270, 550, 120, 35));
     UG_ButtonSetFont(&wnd1, BTN_ID_17, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd1, BTN_ID_17, TXT_BTN_P1);
+    UG_ButtonSetText(&wnd1, BTN_ID_17, TXT_BTN_P3);
     UG_ButtonSetStyle(&wnd1, BTN_ID_17, BTN_STYLE_3D);
 
-    UG_ButtonCreate(&wnd1, &btn_p1_2, BTN_ID_18, UGUI_POS(140, 550, 120, 35));
+    UG_ButtonCreate(&wnd1, &btn_p1_4, BTN_ID_18, UGUI_POS(400, 550, 120, 35));
     UG_ButtonSetFont(&wnd1, BTN_ID_18, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd1, BTN_ID_18, TXT_BTN_P2);
+    UG_ButtonSetText(&wnd1, BTN_ID_18, TXT_BTN_P4);
     UG_ButtonSetStyle(&wnd1, BTN_ID_18, BTN_STYLE_3D);
 
-    UG_ButtonCreate(&wnd1, &btn_p1_3, BTN_ID_19, UGUI_POS(270, 550, 120, 35));
+    UG_ButtonCreate(&wnd1, &btn_p1_5, BTN_ID_19, UGUI_POS(530, 550, 120, 35));
     UG_ButtonSetFont(&wnd1, BTN_ID_19, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd1, BTN_ID_19, TXT_BTN_P3);
+    UG_ButtonSetText(&wnd1, BTN_ID_19, TXT_BTN_P5);
     UG_ButtonSetStyle(&wnd1, BTN_ID_19, BTN_STYLE_3D);
-
-    UG_ButtonCreate(&wnd1, &btn_p1_4, BTN_ID_16, UGUI_POS(400, 550, 120, 35));
-    UG_ButtonSetFont(&wnd1, BTN_ID_16, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd1, BTN_ID_16, TXT_BTN_P4);
-    UG_ButtonSetStyle(&wnd1, BTN_ID_16, BTN_STYLE_3D);
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -583,25 +627,30 @@ static void setup_page2(void)
     UG_TextboxSetAlignment(&wnd2, TXB_ID_5, ALIGN_BOTTOM_RIGHT);
 
     /* Page switch buttons */
-    UG_ButtonCreate(&wnd2, &btn_p2_1, BTN_ID_17, UGUI_POS(10, 550, 120, 35));
+    UG_ButtonCreate(&wnd2, &btn_p2_1, BTN_ID_15, UGUI_POS(10, 550, 120, 35));
+    UG_ButtonSetFont(&wnd2, BTN_ID_15, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd2, BTN_ID_15, TXT_BTN_P1);
+    UG_ButtonSetStyle(&wnd2, BTN_ID_15, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd2, &btn_p2_2, BTN_ID_16, UGUI_POS(140, 550, 120, 35));
+    UG_ButtonSetFont(&wnd2, BTN_ID_16, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd2, BTN_ID_16, TXT_BTN_P2);
+    UG_ButtonSetStyle(&wnd2, BTN_ID_16, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd2, &btn_p2_3, BTN_ID_17, UGUI_POS(270, 550, 120, 35));
     UG_ButtonSetFont(&wnd2, BTN_ID_17, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd2, BTN_ID_17, TXT_BTN_P1);
+    UG_ButtonSetText(&wnd2, BTN_ID_17, TXT_BTN_P3);
     UG_ButtonSetStyle(&wnd2, BTN_ID_17, BTN_STYLE_3D);
 
-    UG_ButtonCreate(&wnd2, &btn_p2_2, BTN_ID_18, UGUI_POS(140, 550, 120, 35));
+    UG_ButtonCreate(&wnd2, &btn_p2_4, BTN_ID_18, UGUI_POS(400, 550, 120, 35));
     UG_ButtonSetFont(&wnd2, BTN_ID_18, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd2, BTN_ID_18, TXT_BTN_P2);
+    UG_ButtonSetText(&wnd2, BTN_ID_18, TXT_BTN_P4);
     UG_ButtonSetStyle(&wnd2, BTN_ID_18, BTN_STYLE_3D);
 
-    UG_ButtonCreate(&wnd2, &btn_p2_3, BTN_ID_19, UGUI_POS(270, 550, 120, 35));
+    UG_ButtonCreate(&wnd2, &btn_p2_5, BTN_ID_19, UGUI_POS(530, 550, 120, 35));
     UG_ButtonSetFont(&wnd2, BTN_ID_19, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd2, BTN_ID_19, TXT_BTN_P3);
+    UG_ButtonSetText(&wnd2, BTN_ID_19, TXT_BTN_P5);
     UG_ButtonSetStyle(&wnd2, BTN_ID_19, BTN_STYLE_3D);
-
-    UG_ButtonCreate(&wnd2, &btn_p2_4, BTN_ID_16, UGUI_POS(400, 550, 120, 35));
-    UG_ButtonSetFont(&wnd2, BTN_ID_16, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd2, BTN_ID_16, TXT_BTN_P4);
-    UG_ButtonSetStyle(&wnd2, BTN_ID_16, BTN_STYLE_3D);
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -636,25 +685,30 @@ static void setup_page3(void)
     UG_TextboxSetAlignment(&wnd3, TXB_ID_3, ALIGN_CENTER);
 
     /* Page switch buttons */
-    UG_ButtonCreate(&wnd3, &btn_p3_1, BTN_ID_17, UGUI_POS(10, 550, 120, 35));
+    UG_ButtonCreate(&wnd3, &btn_p3_1, BTN_ID_15, UGUI_POS(10, 550, 120, 35));
+    UG_ButtonSetFont(&wnd3, BTN_ID_15, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd3, BTN_ID_15, TXT_BTN_P1);
+    UG_ButtonSetStyle(&wnd3, BTN_ID_15, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd3, &btn_p3_2, BTN_ID_16, UGUI_POS(140, 550, 120, 35));
+    UG_ButtonSetFont(&wnd3, BTN_ID_16, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd3, BTN_ID_16, TXT_BTN_P2);
+    UG_ButtonSetStyle(&wnd3, BTN_ID_16, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd3, &btn_p3_3, BTN_ID_17, UGUI_POS(270, 550, 120, 35));
     UG_ButtonSetFont(&wnd3, BTN_ID_17, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd3, BTN_ID_17, TXT_BTN_P1);
+    UG_ButtonSetText(&wnd3, BTN_ID_17, TXT_BTN_P3);
     UG_ButtonSetStyle(&wnd3, BTN_ID_17, BTN_STYLE_3D);
 
-    UG_ButtonCreate(&wnd3, &btn_p3_2, BTN_ID_18, UGUI_POS(140, 550, 120, 35));
+    UG_ButtonCreate(&wnd3, &btn_p3_4, BTN_ID_18, UGUI_POS(400, 550, 120, 35));
     UG_ButtonSetFont(&wnd3, BTN_ID_18, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd3, BTN_ID_18, TXT_BTN_P2);
+    UG_ButtonSetText(&wnd3, BTN_ID_18, TXT_BTN_P4);
     UG_ButtonSetStyle(&wnd3, BTN_ID_18, BTN_STYLE_3D);
 
-    UG_ButtonCreate(&wnd3, &btn_p3_3, BTN_ID_19, UGUI_POS(270, 550, 120, 35));
+    UG_ButtonCreate(&wnd3, &btn_p3_5, BTN_ID_19, UGUI_POS(530, 550, 120, 35));
     UG_ButtonSetFont(&wnd3, BTN_ID_19, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd3, BTN_ID_19, TXT_BTN_P3);
+    UG_ButtonSetText(&wnd3, BTN_ID_19, TXT_BTN_P5);
     UG_ButtonSetStyle(&wnd3, BTN_ID_19, BTN_STYLE_3D);
-
-    UG_ButtonCreate(&wnd3, &btn_p3_4, BTN_ID_16, UGUI_POS(400, 550, 120, 35));
-    UG_ButtonSetFont(&wnd3, BTN_ID_16, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd3, BTN_ID_16, TXT_BTN_P4);
-    UG_ButtonSetStyle(&wnd3, BTN_ID_16, BTN_STYLE_3D);
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -698,25 +752,84 @@ static void setup_page4(void)
     UG_TextboxSetAlignment(&wnd4, TXB_ID_5, ALIGN_CENTER);
 
     /* Page switch buttons */
-    UG_ButtonCreate(&wnd4, &btn_p4_1, BTN_ID_17, UGUI_POS(10, 550, 120, 35));
+    UG_ButtonCreate(&wnd4, &btn_p4_1, BTN_ID_15, UGUI_POS(10, 550, 120, 35));
+    UG_ButtonSetFont(&wnd4, BTN_ID_15, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd4, BTN_ID_15, TXT_BTN_P1);
+    UG_ButtonSetStyle(&wnd4, BTN_ID_15, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd4, &btn_p4_2, BTN_ID_16, UGUI_POS(140, 550, 120, 35));
+    UG_ButtonSetFont(&wnd4, BTN_ID_16, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd4, BTN_ID_16, TXT_BTN_P2);
+    UG_ButtonSetStyle(&wnd4, BTN_ID_16, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd4, &btn_p4_3, BTN_ID_17, UGUI_POS(270, 550, 120, 35));
     UG_ButtonSetFont(&wnd4, BTN_ID_17, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd4, BTN_ID_17, TXT_BTN_P1);
+    UG_ButtonSetText(&wnd4, BTN_ID_17, TXT_BTN_P3);
     UG_ButtonSetStyle(&wnd4, BTN_ID_17, BTN_STYLE_3D);
 
-    UG_ButtonCreate(&wnd4, &btn_p4_2, BTN_ID_18, UGUI_POS(140, 550, 120, 35));
+    UG_ButtonCreate(&wnd4, &btn_p4_4, BTN_ID_18, UGUI_POS(400, 550, 120, 35));
     UG_ButtonSetFont(&wnd4, BTN_ID_18, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd4, BTN_ID_18, TXT_BTN_P2);
+    UG_ButtonSetText(&wnd4, BTN_ID_18, TXT_BTN_P4);
     UG_ButtonSetStyle(&wnd4, BTN_ID_18, BTN_STYLE_3D);
 
-    UG_ButtonCreate(&wnd4, &btn_p4_3, BTN_ID_19, UGUI_POS(270, 550, 120, 35));
+    UG_ButtonCreate(&wnd4, &btn_p4_5, BTN_ID_19, UGUI_POS(530, 550, 120, 35));
     UG_ButtonSetFont(&wnd4, BTN_ID_19, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd4, BTN_ID_19, TXT_BTN_P3);
+    UG_ButtonSetText(&wnd4, BTN_ID_19, TXT_BTN_P5);
     UG_ButtonSetStyle(&wnd4, BTN_ID_19, BTN_STYLE_3D);
+}
 
-    UG_ButtonCreate(&wnd4, &btn_p4_4, BTN_ID_16, UGUI_POS(400, 550, 120, 35));
-    UG_ButtonSetFont(&wnd4, BTN_ID_16, FONT_SIMSUN2_13X13);
-    UG_ButtonSetText(&wnd4, BTN_ID_16, TXT_BTN_P4);
-    UG_ButtonSetStyle(&wnd4, BTN_ID_16, BTN_STYLE_3D);
+/* -------------------------------------------------------------------------------- */
+/* -- Page 5 setup                                                                -- */
+/* -------------------------------------------------------------------------------- */
+static void setup_page5(void)
+{
+    UG_WindowCreate(&wnd5, objs5, MAX_OBJS_PAGE5, windowHandler);
+    UG_WindowSetTitleHeight(&wnd5, 0);
+    UG_WindowSetTitleTextFont(&wnd5, FONT_8X8);
+    UG_WindowSetTitleText(&wnd5, TXT_TITLE_P5);
+
+    /* Label */
+    UG_TextboxCreate(&wnd5, &txb_scb_label, TXB_ID_0, UGUI_POS(10, 5, 770, 20));
+    UG_TextboxSetFont(&wnd5, TXB_ID_0, FONT_SIMSUN2_13X13);
+    UG_TextboxSetText(&wnd5, TXB_ID_0, TXT_SCB_LABEL);
+    UG_TextboxSetAlignment(&wnd5, TXB_ID_0, ALIGN_CENTER_LEFT);
+
+    /* Scrollbox */
+    /* Outer frame: a black-filled textbox acting as a "frame" around the
+     * scrollbox. The scrollbox sits on top with a small inner margin. */
+    /* Scrollbox inside the frame */
+    UG_ScrollBoxCreate(&wnd5, &scb_main, SCB_ID_0, UGUI_POS(209, 28, 386, 286));
+    UG_ScrollBoxSetFont(&wnd5, SCB_ID_0, FONT_SIMSUN2_13X13);
+    UG_ScrollBoxSetText(&wnd5, SCB_ID_0, TXT_SCB_LONG);
+    UG_ScrollBoxSetForeColor(&wnd5, SCB_ID_0, C_BLACK);
+    UG_ScrollBoxSetBackColor(&wnd5, SCB_ID_0, C_WHITE);
+    UG_ScrollBoxSetBarMode(&wnd5, SCB_ID_0, UG_SCROLLBAR_AUTO, UG_SCROLLBAR_AUTO, 8);
+
+    /* Page switch buttons */
+    UG_ButtonCreate(&wnd5, &btn_p5_1, BTN_ID_15, UGUI_POS(10, 550, 120, 35));
+    UG_ButtonSetFont(&wnd5, BTN_ID_15, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd5, BTN_ID_15, TXT_BTN_P1);
+    UG_ButtonSetStyle(&wnd5, BTN_ID_15, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd5, &btn_p5_2, BTN_ID_16, UGUI_POS(140, 550, 120, 35));
+    UG_ButtonSetFont(&wnd5, BTN_ID_16, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd5, BTN_ID_16, TXT_BTN_P2);
+    UG_ButtonSetStyle(&wnd5, BTN_ID_16, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd5, &btn_p5_3, BTN_ID_17, UGUI_POS(270, 550, 120, 35));
+    UG_ButtonSetFont(&wnd5, BTN_ID_17, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd5, BTN_ID_17, TXT_BTN_P3);
+    UG_ButtonSetStyle(&wnd5, BTN_ID_17, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd5, &btn_p5_4, BTN_ID_18, UGUI_POS(400, 550, 120, 35));
+    UG_ButtonSetFont(&wnd5, BTN_ID_18, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd5, BTN_ID_18, TXT_BTN_P4);
+    UG_ButtonSetStyle(&wnd5, BTN_ID_18, BTN_STYLE_3D);
+
+    UG_ButtonCreate(&wnd5, &btn_p5_5, BTN_ID_19, UGUI_POS(530, 550, 120, 35));
+    UG_ButtonSetFont(&wnd5, BTN_ID_19, FONT_SIMSUN2_13X13);
+    UG_ButtonSetText(&wnd5, BTN_ID_19, TXT_BTN_P5);
+    UG_ButtonSetStyle(&wnd5, BTN_ID_19, BTN_STYLE_3D);
 }
 
 /* -------------------------------------------------------------------------------- */
@@ -733,6 +846,7 @@ void GUI_Setup(UG_DEVICE *device)
     setup_page2();
     setup_page3();
     setup_page4();
+    setup_page5();
 
     update_info_text();
 
@@ -778,6 +892,44 @@ void GUI_Process(void)
 }
 
 /* -------------------------------------------------------------------------------- */
+/* -- Keyboard handling (platform-independent)                                    -- */
+/* -------------------------------------------------------------------------------- */
+void GUI_HandleKey(int key)
+{
+    if (ugui.active_window != &wnd5) return;
+
+    switch (key)
+    {
+    case GUI_KEY_UP:
+        UG_ScrollBoxScrollBy(&wnd5, SCB_ID_0, 0, -UG_ScrollBoxGetLineHeight(&wnd5, SCB_ID_0));
+        break;
+    case GUI_KEY_DOWN:
+        UG_ScrollBoxScrollBy(&wnd5, SCB_ID_0, 0, UG_ScrollBoxGetLineHeight(&wnd5, SCB_ID_0));
+        break;
+    case GUI_KEY_LEFT:
+        UG_ScrollBoxScrollBy(&wnd5, SCB_ID_0, -16, 0);
+        break;
+    case GUI_KEY_RIGHT:
+        UG_ScrollBoxScrollBy(&wnd5, SCB_ID_0, 16, 0);
+        break;
+    case GUI_KEY_PAGEUP:
+        UG_ScrollBoxScrollBy(&wnd5, SCB_ID_0, 0, -100);
+        break;
+    case GUI_KEY_PAGEDOWN:
+        UG_ScrollBoxScrollBy(&wnd5, SCB_ID_0, 0, 100);
+        break;
+    case GUI_KEY_HOME:
+        UG_ScrollBoxSetScroll(&wnd5, SCB_ID_0, 0, 0);
+        break;
+    case GUI_KEY_END:
+        UG_ScrollBoxSetScroll(&wnd5, SCB_ID_0, 0, 100000);
+        break;
+    default:
+        break;
+    }
+}
+
+/* -------------------------------------------------------------------------------- */
 /* -- Window message handler                                                      -- */
 /* -------------------------------------------------------------------------------- */
 static void windowHandler(UG_MESSAGE *msg)
@@ -785,6 +937,15 @@ static void windowHandler(UG_MESSAGE *msg)
     decode_msg(msg);
 
     if (msg->type != MSG_TYPE_OBJECT) return;
+    if (msg->event == OBJ_EVENT_POSTRENDER &&
+        msg->id == OBJ_TYPE_SCROLLBOX &&
+        msg->sub_id == SCB_ID_0 &&
+        ugui.active_window == &wnd5)
+    {
+        UG_DrawFrame(210, 40, 600, 330, C_BLACK);
+        return;
+    }
+
     if (msg->event != OBJ_EVENT_RELEASED) return;
 
     switch (msg->id)
@@ -793,20 +954,23 @@ static void windowHandler(UG_MESSAGE *msg)
         switch (msg->sub_id)
         {
         /* Page switch buttons (same IDs in all windows) */
-        case BTN_ID_17:
+        case BTN_ID_15:
             UG_WindowShow(&wnd1);
             return;
-        case BTN_ID_18:
+        case BTN_ID_16:
             UG_WindowShow(&wnd2);
             return;
-        case BTN_ID_19:
+        case BTN_ID_17:
             if (ugui.active_window != &wnd3) {
                 UG_WindowShow(&wnd3);
             }
             page3_drawn = 0;
             return;
-        case BTN_ID_16:
+        case BTN_ID_18:
             UG_WindowShow(&wnd4);
+            return;
+        case BTN_ID_19:
+            UG_WindowShow(&wnd5);
             return;
 
         /* Page 1 buttons */

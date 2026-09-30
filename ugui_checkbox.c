@@ -471,6 +471,7 @@ static void _UG_CheckboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
 {
    UG_CHECKBOX* chb;
    UG_AREA a;
+   UG_AREA vis;
    UG_TEXT txt;
    UG_U8 d;
    UG_S16 d2;
@@ -519,8 +520,13 @@ static void _UG_CheckboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
       obj->a_abs.ys = obj->a_rel.ys + a.ys;
       obj->a_abs.xe = obj->a_rel.xe + a.xs;
       obj->a_abs.ye = obj->a_rel.ye + a.ys;
-      if ( obj->a_abs.ye > wnd->ye ) return;
-      if ( obj->a_abs.xe > wnd->xe ) return;
+
+      /* Visible rectangle = object rectangle ∩ window rectangle */
+      vis.xs = (obj->a_abs.xs > wnd->xs) ? obj->a_abs.xs : wnd->xs;
+      vis.ys = (obj->a_abs.ys > wnd->ys) ? obj->a_abs.ys : wnd->ys;
+      vis.xe = (obj->a_abs.xe < wnd->xe) ? obj->a_abs.xe : wnd->xe;
+      vis.ye = (obj->a_abs.ye < wnd->ye) ? obj->a_abs.ye : wnd->ye;
+      if (vis.xs > vis.xe || vis.ys > vis.ye) return;
 
       if ( obj->state & OBJ_STATE_VISIBLE )
       {
@@ -566,13 +572,16 @@ static void _UG_CheckboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
 
             /* Fill entire object (industry standard: whole widget reverses) */
             if ( !(chb->style & CHB_STYLE_NO_FILL) )
-               UG_FillFrame(obj->a_abs.xs, obj->a_abs.ys, obj->a_abs.xe, obj->a_abs.ye, txt.bc);
+               _UG_FillFrameClipped(obj->a_abs.xs, obj->a_abs.ys,
+                                    obj->a_abs.xe, obj->a_abs.ye, &vis, txt.bc);
 
             /* Draw Checkbox text, vertically centered on the object */
             txt.a.xs = box_xe + 1 + d;
             txt.a.ys = obj->a_abs.ys;
             txt.a.xe = obj->a_abs.xe;
             txt.a.ye = obj->a_abs.ye;
+            txt.clip = vis;
+            txt.use_clip = 1;
             txt.align = chb->align;
             txt.font = chb->font;
             txt.h_space = 2;
@@ -588,24 +597,24 @@ static void _UG_CheckboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
          /* Draw Checkbox X, inside the box */
          c = chb->checked ? chb->fc : chb->bc;
 
-         UG_DrawLine(obj->a_abs.xs+d+1, box_ys+d, obj->a_abs.xs+d2+d-1, box_ys+d2+d-2, c);
-         UG_DrawLine(obj->a_abs.xs+d,    box_ys+d,   obj->a_abs.xs+d2+d-1, box_ys+d2+d-1, c);
-         UG_DrawLine(obj->a_abs.xs+d,    box_ys+d+1, obj->a_abs.xs+d2+d-2, box_ys+d2+d-1, c);
+         _UG_DrawLineClipped(obj->a_abs.xs+d+1, box_ys+d, obj->a_abs.xs+d2+d-1, box_ys+d2+d-2, &vis, c);
+         _UG_DrawLineClipped(obj->a_abs.xs+d,    box_ys+d,   obj->a_abs.xs+d2+d-1, box_ys+d2+d-1, &vis, c);
+         _UG_DrawLineClipped(obj->a_abs.xs+d,    box_ys+d+1, obj->a_abs.xs+d2+d-2, box_ys+d2+d-1, &vis, c);
 
-         UG_DrawLine(obj->a_abs.xs+d2+d-1,  box_ys+d+1, obj->a_abs.xs+d+1, box_ys+d2+d-1, c);
-         UG_DrawLine(obj->a_abs.xs+d2+d-1,  box_ys+d,   obj->a_abs.xs+d,   box_ys+d2+d-1, c);
-         UG_DrawLine(obj->a_abs.xs+d2+d-2,  box_ys+d,   obj->a_abs.xs+d,   box_ys+d2+d-2, c);
+         _UG_DrawLineClipped(obj->a_abs.xs+d2+d-1,  box_ys+d+1, obj->a_abs.xs+d+1, box_ys+d2+d-1, &vis, c);
+         _UG_DrawLineClipped(obj->a_abs.xs+d2+d-1,  box_ys+d,   obj->a_abs.xs+d,   box_ys+d2+d-1, &vis, c);
+         _UG_DrawLineClipped(obj->a_abs.xs+d2+d-2,  box_ys+d,   obj->a_abs.xs+d,   box_ys+d2+d-2, &vis, c);
 
          /* Draw Checkbox frame, at centered position */
          if ( !(chb->style & CHB_STYLE_NO_BORDERS) )
          {
              if ( chb->style & CHB_STYLE_3D )
              {  /* 3D */
-                _UG_DrawObjectFrame(obj->a_abs.xs, box_ys, box_xe, box_ye, (chb->state&CHB_STATE_PRESSED)?(UG_COLOR*)pal_checkbox_pressed:(UG_COLOR*)pal_checkbox_released);
+                _UG_DrawObjectFrameClipped(obj->a_abs.xs, box_ys, box_xe, box_ye, &vis, (chb->state&CHB_STATE_PRESSED)?(UG_COLOR*)pal_checkbox_pressed:(UG_COLOR*)pal_checkbox_released);
              }
              else
              {  /* 2D */
-                 UG_DrawFrame(obj->a_abs.xs, box_ys, box_xe, box_ye, (chb->state&CHB_STATE_PRESSED)?chb->abc:chb->afc);
+                 _UG_DrawFrameClipped(obj->a_abs.xs, box_ys, box_xe, box_ye, &vis, (chb->state&CHB_STATE_PRESSED)?chb->abc:chb->afc);
              }
          }
       }

@@ -160,8 +160,8 @@ UG_RESULT UG_ProgressSetProgress( UG_WINDOW* wnd, UG_U8 id, UG_U8 progress )
    // Only update if different
    if(progress != pgb->progress)
    {
-      // Only redraw if new progress is less then actual(Need to redraw the background)
-      obj->state |= OBJ_STATE_UPDATE | ((progress < pgb->progress) ? OBJ_STATE_REDRAW : 0);
+      // Any change requires a full redraw of the progress area
+      obj->state |= OBJ_STATE_UPDATE | OBJ_STATE_REDRAW;
       pgb->progress = progress;
    }
 
@@ -232,6 +232,7 @@ static void _UG_ProgressUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
 {
    UG_PROGRESS* pgb;
    UG_AREA a;
+   UG_AREA vis;
    UG_U8 d=0;
    UG_S16 w, wps, wpe;
 
@@ -254,8 +255,13 @@ static void _UG_ProgressUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
             obj->a_abs.xe = obj->a_rel.xe + a.xs;
             obj->a_abs.ye = obj->a_rel.ye + a.ys;
 
-            if ( obj->a_abs.ye > wnd->ye ) return;
-            if ( obj->a_abs.xe > wnd->xe ) return;
+            /* Visible rectangle = object rectangle ∩ window rectangle */
+            vis.xs = (obj->a_abs.xs > wnd->xs) ? obj->a_abs.xs : wnd->xs;
+            vis.ys = (obj->a_abs.ys > wnd->ys) ? obj->a_abs.ys : wnd->ys;
+            vis.xe = (obj->a_abs.xe < wnd->xe) ? obj->a_abs.xe : wnd->xe;
+            vis.ye = (obj->a_abs.ye < wnd->ye) ? obj->a_abs.ye : wnd->ye;
+            if (vis.xs > vis.xe || vis.ys > vis.ye) return;
+
 #ifdef UGUI_USE_PRERENDER_EVENT
             _UG_SendObjectPrerenderEvent(wnd, obj);
 #endif
@@ -266,18 +272,18 @@ static void _UG_ProgressUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
             {
                if ( pgb->style & PGB_STYLE_3D )
                {  /* 3D */
-                  _UG_DrawObjectFrame(obj->a_abs.xs, obj->a_abs.ys, obj->a_abs.xe, obj->a_abs.ye, (UG_COLOR*)pal_progress);
+                  _UG_DrawObjectFrameClipped(obj->a_abs.xs, obj->a_abs.ys, obj->a_abs.xe, obj->a_abs.ye, &vis, (UG_COLOR*)pal_progress);
                   d += 3;
                }
                else
                {  /* 2D */
-                  UG_DrawFrame(obj->a_abs.xs, obj->a_abs.ys, obj->a_abs.xe, obj->a_abs.ye, pgb->fc);
+                  _UG_DrawFrameClipped(obj->a_abs.xs, obj->a_abs.ys, obj->a_abs.xe, obj->a_abs.ye, &vis, pgb->fc);
                   d += 1;
                }
             }
 
             w   = ((obj->a_abs.xe-d)-(obj->a_abs.xs+d));
-            wps = w * pgb->progress / 100;
+            wps = (w > 0) ? (w * pgb->progress / 100) : 0;
             wpe = w - wps;
 
             if ( !(pgb->style & PGB_STYLE_NO_FILL) )
@@ -296,18 +302,18 @@ static void _UG_ProgressUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
                   // Needed to match mesh pattern, otherwise it would "scroll right"
                   if((((obj->a_abs.xs+d) & 1) && (wps & 1)) || (!((obj->a_abs.xs+d) & 1) && !(wps & 1)))
                      xs++;
-                  UG_DrawMesh (xs, obj->a_abs.ys+d, xe, obj->a_abs.ye-d, 2, pgb->fc);
+                  _UG_DrawMeshClipped(xs, obj->a_abs.ys+d, xe, obj->a_abs.ye-d, 2, &vis, pgb->fc);
                }
                else
                {
-                  UG_FillFrame(xs, obj->a_abs.ys+d, xe, obj->a_abs.ye-d, pgb->bc);
+                  _UG_FillFrameClipped(xs, obj->a_abs.ys+d, xe, obj->a_abs.ye-d, &vis, pgb->bc);
                }
             }
 
             // Draw elapsed frame
             if(pgb->progress > 0)
             {
-               UG_FillFrame(obj->a_abs.xs+d, obj->a_abs.ys+d, obj->a_abs.xs+d+wps, obj->a_abs.ye-d, pgb->fc);
+               _UG_FillFrameClipped(obj->a_abs.xs+d, obj->a_abs.ys+d, obj->a_abs.xs+d+wps, obj->a_abs.ye-d, &vis, pgb->fc);
             }
 #ifdef UGUI_USE_POSTRENDER_EVENT
             _UG_SendObjectPostrenderEvent(wnd, obj);

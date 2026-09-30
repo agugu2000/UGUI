@@ -94,6 +94,7 @@ static void _UG_ImageUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
 {
    UG_IMAGE* img;
    UG_AREA a;
+   UG_AREA vis;
 
    /* Get object-specific data */
    img = (UG_IMAGE*)(obj->data);
@@ -114,13 +115,18 @@ static void _UG_ImageUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
             obj->a_abs.ys = obj->a_rel.ys + a.ys;
             obj->a_abs.xe = obj->a_rel.xs + ((UG_BMP*)img->img)->width + a.xs;
             obj->a_abs.ye = obj->a_rel.ys + ((UG_BMP*)img->img)->height + a.ys;
-            if ( obj->a_abs.ye > wnd->ye ) return;
-            if ( obj->a_abs.xe > wnd->xe ) return;
+
+            /* Visible rectangle = object rectangle ∩ window rectangle */
+            vis.xs = (obj->a_abs.xs > wnd->xs) ? obj->a_abs.xs : wnd->xs;
+            vis.ys = (obj->a_abs.ys > wnd->ys) ? obj->a_abs.ys : wnd->ys;
+            vis.xe = (obj->a_abs.xe < wnd->xe) ? obj->a_abs.xe : wnd->xe;
+            vis.ye = (obj->a_abs.ye < wnd->ye) ? obj->a_abs.ye : wnd->ye;
+            if (vis.xs > vis.xe || vis.ys > vis.ye) return;
 
             /* Draw Image */
             if ( (img->img != NULL) && (img->type & IMG_TYPE_BMP) )
             {
-               UG_DrawBMP(obj->a_abs.xs,obj->a_abs.ys,(UG_BMP*)img->img);
+               _UG_DrawBMPClipped(obj->a_abs.xs,obj->a_abs.ys,(UG_BMP*)img->img,&vis);
             }
 
             obj->state &= ~OBJ_STATE_REDRAW;

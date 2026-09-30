@@ -69,6 +69,7 @@ set(UGUI_CORE_SRC
     ugui_button.c
     ugui_checkbox.c
     ugui_textbox.c
+	ugui_scrollbox.c
     ugui_progress.c
     ugui_image.c
     font_8x8.c
