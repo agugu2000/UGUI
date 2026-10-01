@@ -286,27 +286,26 @@ static void _UG_ProgressUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
             wps = (w > 0) ? (w * pgb->progress / 100) : 0;
             wpe = w - wps;
 
+            /* Draw the remaining (background) frame first, unless NO_FILL. */
             if ( !(pgb->style & PGB_STYLE_NO_FILL) )
-                /* What's this for? Drawing a frame before drawing the remaining frames on top on it? Seems to do nothing, waste power? */
-               //UG_FillFrame(obj->a_abs.xs+d, obj->a_abs.ys+d, obj->a_abs.xe-d, obj->a_abs.ye-d, wnd->bc);
-
-            // Draw remaining frame first
-            if(wpe > 0)
             {
-               UG_S16 xs = obj->a_abs.xs + d + wps;
-               UG_S16 xe = obj->a_abs.xe - d;
+               if(wpe > 0)
+               {
+                  UG_S16 xs = obj->a_abs.xs + d + wps;
+                  UG_S16 xe = obj->a_abs.xe - d;
 
-               if ( pgb->style & PGB_STYLE_FORE_COLOR_MESH )
-               {
-                  // FIXME: Need fix, if start at 0, it is shifted 1 pixel right.
-                  // Needed to match mesh pattern, otherwise it would "scroll right"
-                  if((((obj->a_abs.xs+d) & 1) && (wps & 1)) || (!((obj->a_abs.xs+d) & 1) && !(wps & 1)))
-                     xs++;
-                  _UG_DrawMeshClipped(xs, obj->a_abs.ys+d, xe, obj->a_abs.ye-d, 2, &vis, pgb->fc);
-               }
-               else
-               {
-                  _UG_FillFrameClipped(xs, obj->a_abs.ys+d, xe, obj->a_abs.ye-d, &vis, pgb->bc);
+                  if ( pgb->style & PGB_STYLE_FORE_COLOR_MESH )
+                  {
+                     // FIXME: Need fix, if start at 0, it is shifted 1 pixel right.
+                     // Needed to match mesh pattern, otherwise it would "scroll right"
+                     if((((obj->a_abs.xs+d) & 1) && (wps & 1)) || (!((obj->a_abs.xs+d) & 1) && !(wps & 1)))
+                        xs++;
+                     _UG_DrawMeshClipped(xs, obj->a_abs.ys+d, xe, obj->a_abs.ye-d, 2, &vis, pgb->fc);
+                  }
+                  else
+                  {
+                     _UG_FillFrameClipped(xs, obj->a_abs.ys+d, xe, obj->a_abs.ye-d, &vis, pgb->bc);
+                  }
                }
             }
 

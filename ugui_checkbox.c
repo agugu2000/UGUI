@@ -31,6 +31,8 @@ UG_RESULT UG_CheckboxCreate( UG_WINDOW* wnd, UG_CHECKBOX* chb, UG_U8 id, UG_S16 
    chb->afc = wnd->fc;
    chb->style = CHB_STYLE_3D;
    chb->align = ALIGN_TOP_LEFT;
+   chb->h_space = 2;
+   chb->v_space = 2;
    chb->font = UG_GetGUI() != NULL ? (UG_GetGUI()->font) : NULL;
    chb->str = "-";
    chb->checked = 0;
@@ -584,8 +586,8 @@ static void _UG_CheckboxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
             txt.use_clip = 1;
             txt.align = chb->align;
             txt.font = chb->font;
-            txt.h_space = 2;
-            txt.v_space = 2;
+            txt.h_space = chb->h_space;
+            txt.v_space = chb->v_space;
             txt.str = chb->str;
             _UG_PutText( &txt );
             obj->state &= ~OBJ_STATE_REDRAW;

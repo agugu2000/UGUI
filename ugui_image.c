@@ -110,11 +110,20 @@ static void _UG_ImageUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
          if ( obj->state & OBJ_STATE_REDRAW )
          {
             UG_WindowGetArea(wnd,&a);
-            /* ToDo: more/better image features */
             obj->a_abs.xs = obj->a_rel.xs + a.xs;
             obj->a_abs.ys = obj->a_rel.ys + a.ys;
-            obj->a_abs.xe = obj->a_rel.xs + ((UG_BMP*)img->img)->width + a.xs;
-            obj->a_abs.ye = obj->a_rel.ys + ((UG_BMP*)img->img)->height + a.ys;
+            /* Image display size is derived from the BMP. Guard against a
+             * not-yet-set BMP (img->img == NULL) so we never dereference it. */
+            if ( (img->img != NULL) && (img->type & IMG_TYPE_BMP) )
+            {
+               obj->a_abs.xe = obj->a_rel.xs + ((UG_BMP*)img->img)->width + a.xs;
+               obj->a_abs.ye = obj->a_rel.ys + ((UG_BMP*)img->img)->height + a.ys;
+            }
+            else
+            {
+               obj->a_abs.xe = obj->a_rel.xe + a.xs;
+               obj->a_abs.ye = obj->a_rel.ye + a.ys;
+            }
 
             /* Visible rectangle = object rectangle ∩ window rectangle */
             vis.xs = (obj->a_abs.xs > wnd->xs) ? obj->a_abs.xs : wnd->xs;

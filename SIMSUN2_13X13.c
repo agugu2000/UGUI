@@ -12,7 +12,6 @@
 //     [6-9]    number_of_chars 4-byte big-endian
 //     [10-13]  total_size      4-byte big-endian
 //     [14-15]  notdef_adv      2-byte big-endian
-//     [14-15]  notdef_adv      2-byte big-endian
 //     [16-17]  ascender        2-byte big-endian, signed
 //     [18-19]  descender       2-byte big-endian, signed
 //   [codepoints:   n * 2 bytes, 2-byte big-endian, ascending]

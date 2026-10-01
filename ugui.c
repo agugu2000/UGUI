@@ -29,11 +29,6 @@ static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S32 x, UG_S32 y, UG_COLOR fc, UG_COL
 static UG_U16 _UG_DecodeUTF8(char **str);
 #endif
 
-// static UG_U16 ptr_8to16(const UG_U8* p){
-//   UG_U16 d = *p++;
-//   return ((d<<8) | *p);
-// }
-
 static UG_U16 _ru16(const UG_U8 *p) {
    return (UG_U16)((p[0] << 8) | p[1]);
 }
@@ -71,7 +66,8 @@ static UG_COLOR _UG_BlendColor(UG_COLOR fg, UG_COLOR bg, UG_U8 a)
     {
         UG_U32 fv = fg & 0xFF, bv = bg & 0xFF;
         UG_U32 v = (fv * a + bv * (256 - a)) >> 8;
-        return (UG_U8)(v & 0xFF);
+        /* Monochrome: threshold the blended gray back to black/white. */
+        return (v >= 128) ? (UG_U8)0xFF : (UG_U8)0x00;
     }
 #endif
 }
@@ -339,6 +335,7 @@ UG_GUI* UG_GetGUI( void )
 UG_U16 UG_GetFontWidth( UG_FONT* font )
 {
    const UG_U8 *p = (const UG_U8 *)font;
+   if (p == NULL) return 0;
    if (p[0] & 0x80) return p[1];
    return (UG_U16)((p[2] << 8) | p[3]);
 }
@@ -346,6 +343,7 @@ UG_U16 UG_GetFontWidth( UG_FONT* font )
 UG_U16 UG_GetFontHeight( UG_FONT* font )
 {
    const UG_U8 *p = (const UG_U8 *)font;
+   if (p == NULL) return 0;
    if (p[0] & 0x80) return p[2];
    return (UG_U16)((p[4] << 8) | p[5]);
 }
@@ -353,6 +351,7 @@ UG_U16 UG_GetFontHeight( UG_FONT* font )
 UG_S16 UG_GetFontAscender( UG_FONT* font )
 {
    const UG_U8 *p = (const UG_U8 *)font;
+   if (p == NULL) return 0;
    if (p[0] & 0x80) return (UG_S16)p[2];
    return (UG_S16)((p[16] << 8) | p[17]);
 }
@@ -360,6 +359,7 @@ UG_S16 UG_GetFontAscender( UG_FONT* font )
 UG_S16 UG_GetFontDescender( UG_FONT* font )
 {
    const UG_U8 *p = (const UG_U8 *)font;
+   if (p == NULL) return 0;
    if (p[0] & 0x80) return 0;
    return (UG_S16)((p[18] << 8) | p[19]);
 }
@@ -464,6 +464,8 @@ void UG_DrawMesh( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_U16 spacing, UG
    if ( y2 < y1 )
      UGUI_SWAP(y1,y2);
 
+   if (spacing == 0) return;   /* guard against infinite loop */
+
    for( p=y1; p<y2; p+=spacing )
    {
      UG_DrawLine(x1, p, x2, p, c);
@@ -498,8 +500,19 @@ void UG_DrawRoundFrame( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_S16 r, UG
    if ( y2 < y1 )
      UGUI_SWAP(y1,y2);
    if(r) r++;               // Fix for corner radius looking weird, this makes the same outline as UG_FillRoundFrame
-   if ( r > x2 ) return;
-   if ( r > y2 ) return;
+   /* Clamp the radius to half the shorter side, otherwise the corner arcs
+    * would overlap in the middle or fall outside the frame. */
+   {
+      UG_S16 w = x2 - x1 + 1;
+      UG_S16 h = y2 - y1 + 1;
+      UG_S16 max_r = ((w < h) ? w : h) / 2;
+      if (r > max_r) r = max_r;
+   }
+   if ( r <= 0 )
+   {
+      UG_DrawFrame(x1, y1, x2, y2, c);
+      return;
+   }
 
    UG_DrawLine(x1+r, y1, x2-r, y1, c);
    UG_DrawLine(x1+r, y2, x2-r, y2, c);
@@ -658,7 +671,10 @@ void UG_DrawArc( UG_S16 x0, UG_S16 y0, UG_S16 r, UG_U8 s, UG_COLOR c )
 
 void UG_DrawLine( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_COLOR c )
 {
-   UG_S16 n, dx, dy, sgndx, sgndy, dxabs, dyabs, x, y, drawx, drawy;
+   /* Use 32-bit arithmetic for deltas and error accumulators so that lines
+    * with large coordinate deltas cannot overflow 16-bit intermediates. */
+   UG_S32 dx, dy, dxabs, dyabs, x, y, n;
+   UG_S16 sgndx, sgndy, drawx, drawy;
 
    /* Clamp to device bounds: public API must never write out of range.
     * Reject lines entirely outside first, to avoid the pixel loop. */
@@ -843,6 +859,8 @@ void UG_PutString( UG_S16 x, UG_S16 y, char* str )
    UG_COLOR def_fc;
    UG_U8    cur_shadow;
 
+   if (gui->font == NULL) return;
+
    _UG_FontSelect(gui->font);
 
    /* Industry standard: line height = ascender - descender */
@@ -869,7 +887,8 @@ void UG_PutString( UG_S16 x, UG_S16 y, char* str )
 
       if ( chr == '\n' )
       {
-         xp = gui->device->x_dim;
+         xp = x;
+         yp += line_h + gui->char_v_space;
          continue;
       }
       if (_UG_GetGlyph(chr, &g) != 0) {
@@ -909,6 +928,8 @@ void UG_ConsolePutString( char* str )
    UG_S16 y_draw;
    UG_U8  cur_shadow;
 
+   if (gui->font == NULL) return;
+
    _UG_FontSelect(gui->font);
    line_h = (UG_S16)gui->currentFont.ascender
           - (UG_S16)gui->currentFont.descender;
@@ -926,7 +947,16 @@ void UG_ConsolePutString( char* str )
 
       if ( chr == '\n' )
       {
-         gui->console.x_pos = gui->device->x_dim;
+         gui->console.x_pos = gui->console.x_start;
+         gui->console.y_pos += line_h + gui->char_v_space;
+         if ( gui->console.y_pos + line_h > gui->console.y_end )
+         {
+            gui->console.x_pos = gui->console.x_start;
+            gui->console.y_pos = gui->console.y_start;
+            UG_FillFrame(gui->console.x_start, gui->console.y_start,
+                         gui->console.x_end, gui->console.y_end,
+                         gui->console.back_color);
+         }
          continue;
       }
 
@@ -936,18 +966,20 @@ void UG_ConsolePutString( char* str )
           gui->console.x_pos += adv + gui->char_h_space;
           continue;
       }
-      gui->console.x_pos += g.adv+gui->char_h_space;
 
-      if ( gui->console.x_pos+g.adv > gui->console.x_end )
+      /* Wrap before drawing, using the current cursor position. */
+      if ( gui->console.x_pos + (UG_S16)g.adv > gui->console.x_end )
       {
          gui->console.x_pos = gui->console.x_start;
-         gui->console.y_pos += line_h+gui->char_v_space;
+         gui->console.y_pos += line_h + gui->char_v_space;
       }
-      if ( gui->console.y_pos+ line_h > gui->console.y_end )
+      if ( gui->console.y_pos + line_h > gui->console.y_end )
       {
          gui->console.x_pos = gui->console.x_start;
          gui->console.y_pos = gui->console.y_start;
-         UG_FillFrame(gui->console.x_start,gui->console.y_start,gui->console.x_end,gui->console.y_end,gui->console.back_color);
+         UG_FillFrame(gui->console.x_start, gui->console.y_start,
+                      gui->console.x_end, gui->console.y_end,
+                      gui->console.back_color);
       }
 
       y_draw = gui->console.y_pos;
@@ -957,6 +989,7 @@ void UG_ConsolePutString( char* str )
       _UG_PutGlyph(&g, gui->console.x_pos, y_draw,
                    gui->console.cur_fc, gui->console.back_color,
                    gui->transparent_font, cur_shadow, NULL);
+      gui->console.x_pos += g.adv + gui->char_h_space;
    }
    if((gui->driver[DRIVER_FILL_AREA].state & DRIVER_ENABLED))
      ((void*(*)(UG_S16, UG_S16, UG_S16, UG_S16))gui->driver[DRIVER_FILL_AREA].driver)(-1,-1,-1,-1);
@@ -1204,6 +1237,8 @@ UG_S16 _UG_GetGlyph(UG_CHAR cp, UG_GLYPH *g) {
  * Updates the current font data
  */
 void _UG_FontSelect(UG_FONT *font) {
+    if (font == NULL)
+        return;
     if (gui->currentFont.font == font)
         return;
 
@@ -1475,6 +1510,17 @@ void _UG_DrawMeshClipped( UG_S32 x1, UG_S32 y1, UG_S32 x2, UG_S32 y2,
     _UG_DrawLineClipped(x2, y1, x2, y2, clip, c);
 }
 
+/* Alignment-safe read of one 16-bit RGB565 sample from a BMP buffer. Using
+ * memcpy expresses the load portably even when bmp->p is not 2-byte aligned;
+ * a plain (UG_U16*) cast plus dereference would be undefined behavior on
+ * targets that require aligned access. */
+static UG_U16 _UG_ReadRGB565( const UG_U8* p )
+{
+    UG_U16 v;
+    memcpy(&v, p, sizeof(v));
+    return v;
+}
+
 void _UG_DrawBMPClipped( UG_S32 xp, UG_S32 yp, UG_BMP* bmp, UG_AREA* clip )
 {
     UG_S32 x, y;
@@ -1493,19 +1539,19 @@ void _UG_DrawBMPClipped( UG_S32 xp, UG_S32 yp, UG_BMP* bmp, UG_AREA* clip )
 
 #if defined UGUI_USE_COLOR_RGB888 || defined UGUI_USE_COLOR_RGB565
     if ( bmp->bpp == BMP_BPP_16 ) {
-        UG_U16 *p = (UG_U16*)bmp->p;
+        const UG_U8 *src = (const UG_U8*)bmp->p;
         for (y = 0; y < (UG_S32)bmp->height; y++) {
             for (x = 0; x < (UG_S32)bmp->width; x++) {
                 UG_S32 px = xp + x;
                 UG_S32 py = yp + y;
                 if (px >= cx0 && px <= cx1 && py >= cy0 && py <= cy1) {
 #if defined(UGUI_USE_COLOR_RGB888)
-                    gui->device->pset((UG_S16)px, (UG_S16)py, _UG_ConvertRGB565ToRGB888(*p));
+                    gui->device->pset((UG_S16)px, (UG_S16)py, _UG_ConvertRGB565ToRGB888(_UG_ReadRGB565(src)));
 #else
-                    gui->device->pset((UG_S16)px, (UG_S16)py, *p);
+                    gui->device->pset((UG_S16)px, (UG_S16)py, _UG_ReadRGB565(src));
 #endif
                 }
-                p++;
+                src += 2;
             }
         }
     }
@@ -2658,23 +2704,24 @@ void UG_DrawBMP( UG_S16 xp, UG_S16 yp, UG_BMP* bmp )
         else if ( gui->driver[DRIVER_FILL_AREA].state & DRIVER_ENABLED)
         {
            void(*push_pixels)(UG_U16, UG_COLOR) = ((void*(*)(UG_S16, UG_S16, UG_S16, UG_S16))gui->driver[DRIVER_FILL_AREA].driver)(xp,yp,xp+bmp->width-1,yp+bmp->height-1);
-           UG_U16 *p = (UG_U16*)bmp->p;
+           const UG_U8 *src = (const UG_U8*)bmp->p;
            for(y=0;y<bmp->height;y++)
            {
              for(x=0;x<bmp->width;x++)
              {
                #ifdef UGUI_USE_COLOR_RGB888
-               push_pixels(1, _UG_ConvertRGB565ToRGB888(*p++)); /* Convert RGB565 to RGB888 */
+               push_pixels(1, _UG_ConvertRGB565ToRGB888(_UG_ReadRGB565(src))); /* Convert RGB565 to RGB888 */
                #elif defined UGUI_USE_COLOR_RGB565
-               push_pixels(1, *p++);
+               push_pixels(1, _UG_ReadRGB565(src));
                #endif
+               src += 2;
              }
            }
            return;
         }
      }
 
-     UG_U16 *p = (UG_U16*)bmp->p;
+     const UG_U8 *src = (const UG_U8*)bmp->p;
      for(y=0;y<bmp->height;y++)
      {
         UG_S16 py = yp + y;
@@ -2685,12 +2732,12 @@ void UG_DrawBMP( UG_S16 xp, UG_S16 yp, UG_BMP* bmp )
               py >= 0 && py < gui->device->y_dim)
           {
           #ifdef UGUI_USE_COLOR_RGB888
-             gui->device->pset(px, py, _UG_ConvertRGB565ToRGB888(*p));
+             gui->device->pset(px, py, _UG_ConvertRGB565ToRGB888(_UG_ReadRGB565(src)));
           #elif defined UGUI_USE_COLOR_RGB565
-             gui->device->pset(px, py, *p);
+             gui->device->pset(px, py, _UG_ReadRGB565(src));
           #endif
           }
-          p++;
+          src += 2;
         }
      }
    }
@@ -3010,9 +3057,8 @@ UG_RESULT UG_WindowSetXStart( UG_WINDOW* wnd, UG_S16 xs )
 {
    if ( (wnd != NULL) && (wnd->state & WND_STATE_VALID) )
    {
-      wnd->xs = xs;
-      if ( UG_WindowResize( wnd, wnd->xs, wnd->ys, wnd->xe, wnd->ye) == UG_RESULT_FAIL ) return UG_RESULT_FAIL;
-      return UG_RESULT_OK;
+      /* Validate first, mutate only on success (atomic update). */
+      return UG_WindowResize( wnd, xs, wnd->ys, wnd->xe, wnd->ye );
    }
    return UG_RESULT_FAIL;
 }
@@ -3021,9 +3067,7 @@ UG_RESULT UG_WindowSetYStart( UG_WINDOW* wnd, UG_S16 ys )
 {
    if ( (wnd != NULL) && (wnd->state & WND_STATE_VALID) )
    {
-      wnd->ys = ys;
-      if ( UG_WindowResize( wnd, wnd->xs, wnd->ys, wnd->xe, wnd->ye) == UG_RESULT_FAIL ) return UG_RESULT_FAIL;
-      return UG_RESULT_OK;
+      return UG_WindowResize( wnd, wnd->xs, ys, wnd->xe, wnd->ye );
    }
    return UG_RESULT_FAIL;
 }
@@ -3032,9 +3076,7 @@ UG_RESULT UG_WindowSetXEnd( UG_WINDOW* wnd, UG_S16 xe )
 {
    if ( (wnd != NULL) && (wnd->state & WND_STATE_VALID) )
    {
-      wnd->xe = xe;
-      if ( UG_WindowResize( wnd, wnd->xs, wnd->ys, wnd->xe, wnd->ye) == UG_RESULT_FAIL ) return UG_RESULT_FAIL;
-      return UG_RESULT_OK;
+      return UG_WindowResize( wnd, wnd->xs, wnd->ys, xe, wnd->ye );
    }
    return UG_RESULT_FAIL;
 }
@@ -3043,9 +3085,7 @@ UG_RESULT UG_WindowSetYEnd( UG_WINDOW* wnd, UG_S16 ye )
 {
    if ( (wnd != NULL) && (wnd->state & WND_STATE_VALID) )
    {
-      wnd->ye = ye;
-      if ( UG_WindowResize( wnd, wnd->xs, wnd->ys, wnd->xe, wnd->ye) == UG_RESULT_FAIL ) return UG_RESULT_FAIL;
-      return UG_RESULT_OK;
+      return UG_WindowResize( wnd, wnd->xs, wnd->ys, wnd->xe, ye );
    }
    return UG_RESULT_FAIL;
 }
@@ -3332,7 +3372,7 @@ UG_S16 UG_WindowGetOuterHeight( UG_WINDOW* wnd )
 static UG_RESULT _UG_WindowDrawTitle( UG_WINDOW* wnd )
 {
    UG_TEXT txt;
-   UG_S16 xs,ys,xe,ye;
+   UG_S16 xs,ys,xe;
 
    memset(&txt, 0, sizeof(txt));
 
@@ -3341,7 +3381,6 @@ static UG_RESULT _UG_WindowDrawTitle( UG_WINDOW* wnd )
       xs = wnd->xs;
       ys = wnd->ys;
       xe = wnd->xe;
-      ye = wnd->ye;
 
       /* 3D style? */
       if ( wnd->style & WND_STYLE_3D )
@@ -3349,7 +3388,6 @@ static UG_RESULT _UG_WindowDrawTitle( UG_WINDOW* wnd )
          xs+=3;
          ys+=3;
          xe-=3;
-         ye-=3;
       }
 
       /* Is the window active or inactive? */

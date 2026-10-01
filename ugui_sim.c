@@ -932,7 +932,7 @@ static void setup_page6(void)
     UG_ScrollBoxSetText(&wnd6, SCB_ID_0, TXT_CLIP_SCB);
     UG_ScrollBoxSetForeColor(&wnd6, SCB_ID_0, C_BLACK);
     UG_ScrollBoxSetBackColor(&wnd6, SCB_ID_0, C_WHITE);
-    UG_ScrollBoxSetBarMode(&wnd5, SCB_ID_0, UG_SCROLLBAR_AUTO, UG_SCROLLBAR_AUTO, 0, 0);
+    UG_ScrollBoxSetBarMode(&wnd6, SCB_ID_0, UG_SCROLLBAR_AUTO, UG_SCROLLBAR_AUTO, 0, 0);
 
     /* --- F: BMP with right edge outside the window --- */
     UG_ImageCreate(&wnd6, &img_clip_f, IMG_ID_0, UGUI_POS(790, 250, 16, 16));

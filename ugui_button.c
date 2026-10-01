@@ -31,6 +31,8 @@ UG_RESULT UG_ButtonCreate( UG_WINDOW* wnd, UG_BUTTON* btn, UG_U8 id, UG_S16 xs, 
    btn->afc = wnd->fc;
    btn->style = BTN_STYLE_3D;
    btn->align = ALIGN_CENTER;
+   btn->h_space = 2;
+   btn->v_space = 2;
    btn->font = UG_GetGUI() != NULL ? (UG_GetGUI()->font) : NULL;
    btn->str = "-";
 
@@ -537,8 +539,8 @@ static void _UG_ButtonUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
             txt.use_clip = 1;
             txt.align = btn->align;
             txt.font = btn->font;
-            txt.h_space = 2;
-            txt.v_space = 2;
+            txt.h_space = btn->h_space;
+            txt.v_space = btn->v_space;
             txt.str = btn->str;
             _UG_PutText( &txt );
             obj->state &= ~OBJ_STATE_REDRAW;

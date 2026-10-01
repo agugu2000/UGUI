@@ -244,6 +244,7 @@ int main(int argc, char *argv[])
     SDL_DestroyWindow(handle->win);
     free(handle->imgBuffer);
     free(handle);
+    free(simCfg);
     SDL_Quit();
 
     return 0;

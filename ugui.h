@@ -18,6 +18,7 @@
 #define __UGUI_H
 
 #include <stdlib.h>
+#include <string.h>
 #include "ugui_config.h"
 #include "ugui_colors.h"
 #if !defined(UGUI_USE_CUSTOM_THEME)
@@ -56,7 +57,21 @@ typedef UG_U8                        UG_COLOR;
 /* -- DEFINES                                                                    -- */
 /* -------------------------------------------------------------------------------- */
 /* Internal helpers */
-#define UGUI_SWAP(a, b)                               { UG_U16 t=a; a=b; b=t; }
+/* Type-safe swap. Uses __typeof__ on GCC/Clang, falls back to a portable
+ * memcpy-based swap elsewhere. The size equality check is enforced at
+ * compile time on both paths. */
+#if defined(__GNUC__)
+#define UGUI_SWAP(a, b) \
+    do { __typeof__(a) _ugui_swap_t = (a); (a) = (b); (b) = _ugui_swap_t; } while (0)
+#else
+#define UGUI_SWAP(a, b) \
+    do { \
+        char _ugui_swap_t[sizeof(a) == sizeof(b) ? (int)sizeof(a) : -1]; \
+        memcpy(_ugui_swap_t, &(a), sizeof(a)); \
+        memcpy(&(a), &(b), sizeof(a)); \
+        memcpy(&(b), _ugui_swap_t, sizeof(a)); \
+    } while (0)
+#endif
 
 /* Sizing helpers */
 #define UGUI_POS(xs, ys, w, h)                        xs, ys, xs+w, ys+h

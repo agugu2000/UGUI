@@ -7,16 +7,20 @@
 /* -------------------------------------------------------------------------------- */
 #include "ugui.h"
 /*
-  Old fonts converted to new structure. They use Code Page 850 encoding. UTF-8 can be disabled if only these fonts are being used.
+  FONT_8X8 is the legacy single-byte format (first byte 0x80) using Code Page
+  850 encoding. UTF-8 can be disabled if only this font is being used.
   https://en.wikipedia.org/wiki/Code_page_850
+
+  FONT_SIMSUN2_13X13 is the new Unicode format (first byte bit7 = 0) and
+  requires UTF-8 to access codepoints above 127.
 */
 
 #ifdef UGUI_USE_FONT_SIMSUN2_13X13
-extern const UG_FONT FONT_SIMSUN2_13X13[];
+extern UG_FONT FONT_SIMSUN2_13X13[];
 #endif
 
 #ifdef UGUI_USE_FONT_8X8
-extern const  UG_FONT FONT_8X8[];
+extern UG_FONT FONT_8X8[];
 #endif
 /*
 #ifdef UGUI_USE_FONT_4X16

@@ -1,4 +1,4 @@
-# µGUI (fork) — Extended Font, UTF-8, Shadow, Inline Color
+# µGUI (fork) — Extended Font, UTF-8, Inline Color & Per-char Shadow
 
 Based on https://github.com/deividAlfa/UGUI with further modifications.
 
@@ -111,7 +111,7 @@ Example:
 
 - SDL2, cross-platform.
 - DPI scaling disabled for 1:1 pixel mapping.
-- Four pages: Control / Styles / Draw / Color.
+- Six pages: Control / Styles / Draw / Color / Scrollbox / Clipping.
 - 16x16 RGB565 BMP test pattern.
 - Shadow toggled per page.
 - Page 4 showcases inline color tags: single-line multi-color, cross-line
