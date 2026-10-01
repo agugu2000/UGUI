@@ -16,6 +16,10 @@ typedef struct
    UG_ColorRun* runs;
    UG_U16       run_count;
 
+   /* Optional pre-decoded shadow runs. Same rules as runs above. */
+   UG_ShadowRun* shadow_runs;
+   UG_U16        shadow_run_count;
+
    /* Viewport (screen coords, closed interval). Derived from a_abs.
     * UG_AREA is uGUI-global and stays UG_S16. */
    UG_AREA  view;
@@ -87,6 +91,8 @@ UG_RESULT UG_ScrollBoxHide( UG_WINDOW* wnd, UG_U8 id );
 UG_RESULT UG_ScrollBoxSetText( UG_WINDOW* wnd, UG_U8 id, char* str );
 UG_RESULT UG_ScrollBoxSetRuns( UG_WINDOW* wnd, UG_U8 id,
                                UG_ColorRun* runs, UG_U16 run_count );
+UG_RESULT UG_ScrollBoxSetShadowRuns( UG_WINDOW* wnd, UG_U8 id,
+                                     UG_ShadowRun* runs, UG_U16 run_count );
 UG_RESULT UG_ScrollBoxSetFont( UG_WINDOW* wnd, UG_U8 id, UG_FONT* font );
 UG_RESULT UG_ScrollBoxSetForeColor( UG_WINDOW* wnd, UG_U8 id, UG_COLOR fc );
 UG_RESULT UG_ScrollBoxSetBackColor( UG_WINDOW* wnd, UG_U8 id, UG_COLOR bc );

@@ -235,22 +235,28 @@ typedef struct
 
 /* Text structure */
 /* -------------------------------------------------------------------------------- */
-/* -- RICH TEXT COLOR RUN                                                        -- */
+/* -- RICH TEXT RUNS (color + shadow)                                             -- */
 /* -------------------------------------------------------------------------------- */
 /*
- * A color run describes a contiguous range of characters in a plain-text
- * string that share the same foreground color.
+ * A run describes a contiguous range of characters in a plain-text string that
+ * share the same attribute value (foreground color, or shadow mode).
  *   start/end are CHARACTER indices (not byte indices), end is exclusive.
  *   Runs must be sorted by start, non-overlapping.
- *   Characters not covered by any run use UG_TEXT.fc (the default color).
+ *   Characters not covered by any color run use UG_TEXT.fc (the default color).
+ *   Characters not covered by any shadow run use the current global default
+ *   shadow (see UG_FontSetShadow; the default is off = 0).
  *
- * Inline color tag syntax accepted by the renderer and UG_DecodeText():
+ * Inline tag syntax accepted by the renderer and UG_DecodeText():
  *   {#RRGGBB}   set foreground color, persists until changed
  *   {#}         restore default foreground color, persists
+ *   {@s0}       shadow off (0), persists             ('s' is case-insensitive)
+ *   {@s1}       drop shadow (offset +1,+1), persists
+ *   {@s2}       outline (8 directions), persists
  *   {{          literal '{'
  *
- * Tags are only recognized when runs == NULL. When runs != NULL the string
- * is treated as plain text and tags are NOT parsed.
+ * Tags are only recognized when runs == NULL AND shadow_runs == NULL. When
+ * either runs array is non-NULL the string is treated as plain text and tags
+ * are NOT parsed.
  */
 typedef struct
 {
@@ -258,6 +264,13 @@ typedef struct
     UG_U16   end;     /* exclusive character index */
     UG_COLOR fc;      /* foreground color */
 } UG_ColorRun;
+
+typedef struct
+{
+    UG_U16   start;   /* inclusive character index */
+    UG_U16   end;     /* exclusive character index */
+    UG_U8    shadow;  /* 0 = off, 1 = drop, 2 = outline */
+} UG_ShadowRun;
 
 typedef struct
 {
@@ -277,6 +290,9 @@ typedef struct
     * !NULL -> str is plain text; runs[] drives colors (zero parsing). */
    UG_ColorRun* runs;
    UG_U16       run_count;
+   /* Optional pre-decoded shadow runs. Same rules as runs above. */
+   UG_ShadowRun* shadow_runs;
+   UG_U16        shadow_run_count;
 } UG_TEXT;
 
 /* -------------------------------------------------------------------------------- */
@@ -607,11 +623,13 @@ void _UG_DrawBMPClipped( UG_S32 xp, UG_S32 yp, UG_BMP* bmp, UG_AREA* clip );
 
 /* Internal text layout primitives, shared by textbox and scrollbox. */
 UG_S32 _UG_MeasureTextLine( char** str, UG_FONT* font, UG_S16 h_space,
-                            UG_ColorRun* runs );
+                            UG_ColorRun* runs, UG_ShadowRun* shadow_runs );
 UG_S32 _UG_DrawTextLine( char** str, UG_S32 x, UG_S32 baseline,
                          UG_COLOR* cur_fc, UG_COLOR def_fc,
+                         UG_U8* cur_shadow, UG_U8 def_shadow,
                          UG_COLOR bc, UG_FONT* font,
                          UG_ColorRun* runs, UG_U16 run_count,
+                         UG_ShadowRun* shadow_runs, UG_U16 shadow_run_count,
                          UG_U16* char_index,
                          UG_AREA* clip, UG_S16 h_space );
 UG_OBJECT* _UG_SearchObject( UG_WINDOW* wnd, UG_U8 type, UG_U8 id );
@@ -627,7 +645,7 @@ void _UG_SendObjectPostrenderEvent(UG_WINDOW *wnd,UG_OBJECT *obj);
 UG_U32 _UG_ConvertRGB565ToRGB888(UG_U16 c);
 UG_U16 _UG_ConvertRGB888ToRGB565(UG_U32 c);
 
-/* Decode inline color tags into plain text + color runs.
+/* Decode inline color/shadow tags into plain text + color runs + shadow runs.
  *
  * font            : the font that will be used for rendering. This decides
  *                   how multi-byte characters are counted (UTF-8 for new
@@ -636,8 +654,11 @@ UG_U16 _UG_ConvertRGB888ToRGB565(UG_U32 c);
  *                   run indices will not line up with the renderer's char
  *                   index. Passing NULL means "new font, UTF-8 if enabled".
  * clean/clean_cap : output plain-text buffer (byte capacity, incl. NUL).
- * runs/run_cap    : output run buffer. If runs == NULL, tags are stripped
- *                   but no runs are emitted (run_count = 0).
+ * runs/run_cap    : output color run buffer. If runs == NULL, color tags are
+ *                   stripped but no color runs are emitted (run_count = 0).
+ * shadow_runs/shadow_run_cap : output shadow run buffer. If shadow_runs ==
+ *                   NULL, shadow tags are stripped but no shadow runs are
+ *                   emitted (shadow_run_count = 0).
  * out_*           : output pointers / lengths. Must not be NULL.
  * Returns UG_RESULT_OK or UG_RESULT_FAIL (buffer too small / bad args).
  */
@@ -645,8 +666,10 @@ UG_RESULT UG_DecodeText( const char* in,
                          UG_FONT* font,
                          char* clean, UG_U16 clean_cap,
                          UG_ColorRun* runs, UG_U16 run_cap,
+                         UG_ShadowRun* shadow_runs, UG_U16 shadow_run_cap,
                          char** out_clean, UG_U16* out_clean_len,
-                         UG_ColorRun** out_runs, UG_U16* out_run_count );
+                         UG_ColorRun** out_runs, UG_U16* out_run_count,
+                         UG_ShadowRun** out_shadow_runs, UG_U16* out_shadow_run_count );
 
 /* Glyph lookup (replaces _UG_GetCharData) */
 UG_S16 _UG_GetGlyph( UG_CHAR encoding, UG_GLYPH *g );

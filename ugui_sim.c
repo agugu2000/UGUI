@@ -102,6 +102,10 @@
 #define TXT_C5  "Bad tag {#xyz} stays literal"
 #define TXT_C6  "Button text {#FF0000}red{#00FF00}green{#}"
 
+/* Page 4 — shadow showcase ('s' case-insensitive; default == {@s0} == off) */
+#define TXT_S1  "阴影 {@s1}落影{@s0} {@s2}描边{@s0} 默认"
+#define TXT_S2  "大小写{@S1}DROP{@s0} 混合{#FF0000}红{@s2}影{#}{@s0}"
+
 /* Page 5 — scrollbox demo */
 #define TXT_SCB_LABEL \
     "Scrollbox demo: arrows to scroll, L/R for hstep, PgUp/PgDn/Home/End"
@@ -193,6 +197,7 @@ static UG_BUTTON   btn_p3_1, btn_p3_2, btn_p3_3, btn_p3_4, btn_p3_5, btn_p3_6;
 
 /* Page 4 objects */
 static UG_TEXTBOX  txb_c1, txb_c2, txb_c3, txb_c4, txb_c5, txb_c6;
+static UG_TEXTBOX  txb_s1, txb_s2;
 static UG_BUTTON   btn_p4_1, btn_p4_2, btn_p4_3, btn_p4_4, btn_p4_5, btn_p4_6;
 
 /* Page 5 objects */
@@ -796,6 +801,17 @@ static void setup_page4(void)
     UG_TextboxSetFont(&wnd4, TXB_ID_5, FONT_SIMSUN2_13X13);
     UG_TextboxSetText(&wnd4, TXB_ID_5, TXT_C6);
     UG_TextboxSetAlignment(&wnd4, TXB_ID_5, ALIGN_CENTER);
+
+    /* Shadow tags demo */
+    UG_TextboxCreate(&wnd4, &txb_s1, TXB_ID_6, UGUI_POS(10, 345, 770, 40));
+    UG_TextboxSetFont(&wnd4, TXB_ID_6, FONT_SIMSUN2_13X13);
+    UG_TextboxSetText(&wnd4, TXB_ID_6, TXT_S1);
+    UG_TextboxSetAlignment(&wnd4, TXB_ID_6, ALIGN_CENTER);
+
+    UG_TextboxCreate(&wnd4, &txb_s2, TXB_ID_7, UGUI_POS(10, 395, 770, 40));
+    UG_TextboxSetFont(&wnd4, TXB_ID_7, FONT_SIMSUN2_13X13);
+    UG_TextboxSetText(&wnd4, TXB_ID_7, TXT_S2);
+    UG_TextboxSetAlignment(&wnd4, TXB_ID_7, ALIGN_CENTER);
 
     /* Page switch buttons */
     UG_ButtonCreate(&wnd4, &btn_p4_1, BTN_ID_15, UGUI_POS(10, 550, 120, 35));

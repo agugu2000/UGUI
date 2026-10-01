@@ -38,17 +38,24 @@ This is a fork based on https://github.com/deividAlfa/UGUI with the following fe
 
 ### Shadow / Outline
 
-- `UG_FontSetShadow(0)` — no shadow (default)
-- `UG_FontSetShadow(1)` — drop shadow (offset +1, +1)
-- `UG_FontSetShadow(2)` — outline (8 directions)
+- Shadow is now per-character, controlled by inline tags (default is off = 0):
+  - `{@s0}` — shadow off (default)
+  - `{@s1}` — drop shadow (offset +1, +1)
+  - `{@s2}` — outline (8 directions)
+  - `s` is case-insensitive (`{@S1}` is the same as `{@s1}`).
+- `UG_FontSetShadow(n)` / `UG_FontGetShadow()` set/get the *default* shadow —
+  the mode applied to characters not covered by a tag. The default is 0 (off).
+- Shadow color is derived per-character: 25% of the character's own foreground
+  color blended over the background, so the shadow color automatically follows
+  inline color tags.
 - Only on 1BPP non-driver path.
 - Driver path has no shadow (design trade-off).
 
-### Inline color tags
+### Inline tags (color + shadow)
 
-Per-glyph foreground color can be controlled inline in any string rendered
-by the library (textbox, button, checkbox, title, `UG_PutString`,
-`UG_ConsolePutString`).
+Per-glyph foreground color and shadow mode can be controlled inline in any
+string rendered by the library (textbox, button, checkbox, title,
+`UG_PutString`, `UG_ConsolePutString`).
 
 Tag syntax:
 
@@ -56,32 +63,41 @@ Tag syntax:
 |---|---|
 | `{#RRGGBB}` | set foreground color, persists until changed |
 | `{#}` | restore default foreground color, persists |
+| `{@s0}` | shadow off (0), persists — `s` is case-insensitive |
+| `{@s1}` | drop shadow (offset +1,+1), persists |
+| `{@s2}` | outline (8 directions), persists |
 | `{{` | literal `{` |
 
 Notes:
 
-- Tags are persistent (terminal semantics): once set, the color applies to
+- Tags are persistent (terminal semantics): once set, the attribute applies to
   all following characters until another tag changes it, including across
   line breaks.
 - Tags are parsed per frame when the string is passed directly. For
   zero-parse rendering, pre-decode the string with `UG_DecodeText()` and
-  pass the resulting plain text + color runs via `UG_TEXT.runs`.
-- Invalid tags (e.g. `{#xyz}`, `{#FF00`) are treated as literal text.
-- `}` never needs escaping; only `{` does (as `{{`).
-- Tags are only recognized when `UG_TEXT.runs == NULL`. When `runs != NULL`,
-  the string is plain text and tags are NOT parsed.
+  pass the resulting plain text + color runs + shadow runs via
+  `UG_TEXT.runs` / `UG_TEXT.shadow_runs`.
+- Invalid tags (e.g. `{#xyz}`, `{#FF00`, `{@s9}`, `{@x1}`) are treated as
+  literal text.
+- `}` never needs escaping; only `{` does (as `{{`). A literal `{@s1}` is
+  written `{{@s1}`.
+- Tags are only recognized when `UG_TEXT.runs == NULL` **and**
+  `UG_TEXT.shadow_runs == NULL`. When either runs array is non-NULL, the
+  string is plain text and tags are NOT parsed.
 
 Example:
 
     UG_ButtonSetText(&wnd, BTN_ID_0, "Start {#FF0000}Stop{#} Start");
     UG_TextboxSetText(&wnd, TXB_ID_0, "Status: {#00FF00}OK{#}");
     UG_PutString(10, 10, "Normal {#FF0000}Red {#00FF00}Green {#0000FF}Blue{#}");
+    UG_TextboxSetText(&wnd, TXB_ID_1, "标题 {@s1}落影{@s0} {@s2}描边{@s0}");
 
 ### API additions
 
-- `UG_DecodeText(in, font, clean, clean_cap, runs, run_cap, out_*, ...)` —
-  decode inline tags into plain text + color runs. The `font` argument must
-  be the same font used for rendering, so character indexing matches.
+- `UG_DecodeText(in, font, clean, clean_cap, runs, run_cap, shadow_runs,
+  shadow_run_cap, out_*, ...)` — decode inline color/shadow tags into plain
+  text + color runs + shadow runs. The `font` argument must be the same font
+  used for rendering, so character indexing matches.
 - `UG_ConsoleReset()` — reset the console cursor to the top-left of the
   console area (does not clear the area).
 
@@ -100,7 +116,8 @@ Example:
 - Shadow toggled per page.
 - Page 4 showcases inline color tags: single-line multi-color, cross-line
   color persistence, `{{` escape, invalid tag fallback, CJK + color,
-  colored button text, colored console output.
+  colored button text, colored console output — and inline shadow tags
+  (`{@s0}`, `{@s1}`, `{@s2}`, case-insensitive).
 
 ### Chinese font
 
@@ -178,7 +195,7 @@ technologies such as LCD, TFT, E-Paper, LED or OLED are supported.
 * basic geometric functions (e.g. line, circle, frame etc.)
 * can be easily ported to almost any microcontroller system
 * no risky dynamic memory allocation required
-* inline per-glyph color tags (`{#RRGGBB}`, `{#}`, `{{`)
+* inline per-glyph color tags (`{#RRGGBB}`, `{#}`, `{{`) and shadow tags (`{@s0}`, `{@s1}`, `{@s2}`)
 
 ## µGUI Requirements
 µGUI is platform-independent, so there is no need to use a certain embedded system. In order to

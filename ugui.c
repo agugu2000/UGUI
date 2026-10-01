@@ -24,7 +24,7 @@ static void _UG_WindowUpdate( UG_WINDOW* wnd );
 static UG_RESULT _UG_WindowClear( UG_WINDOW* wnd );
 static void _UG_FontSelect( UG_FONT *font);
 static UG_S16 _UG_PutChar( UG_CHAR chr, UG_S32 x, UG_S32 y, UG_COLOR fc, UG_COLOR bc);
-static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S32 x, UG_S32 y, UG_COLOR fc, UG_COLOR bc, UG_U8 trans, UG_AREA* clip );
+static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S32 x, UG_S32 y, UG_COLOR fc, UG_COLOR bc, UG_U8 trans, UG_U8 shadow, UG_AREA* clip );
 #ifdef UGUI_USE_UTF8
 static UG_U16 _UG_DecodeUTF8(char **str);
 #endif
@@ -174,18 +174,20 @@ static UG_U8 _UG_FontIsOld( UG_FONT* font )
 }
 
 /*
- * Fetch the next display unit from *str, honoring inline color tags.
+ * Fetch the next display unit from *str, honoring inline color and shadow tags.
  *   returns 0  : end of string
  *   returns >0 : codepoint
  *   returns -1 : a tag was consumed; caller should continue the loop
  *
- * *cur_fc is the current foreground color. Tags update it in place.
+ * *cur_fc is the current foreground color. Color tags update it in place.
+ * *cur_shadow is the current shadow mode. Shadow tags update it in place.
  * def_fc is the default color, used by the {#} tag.
  *
  * Byte consumption matches _UG_DecodeUTF8() exactly so that the renderer's
  * character index stays in sync with UG_DecodeText()'s character index.
  */
-static UG_S32 _UG_NextCharEx( char** str, UG_COLOR* cur_fc, UG_COLOR def_fc )
+static UG_S32 _UG_NextCharEx( char** str, UG_COLOR* cur_fc, UG_COLOR def_fc,
+                              UG_U8* cur_shadow )
 {
     const UG_U8* p = (const UG_U8*)*str;
 
@@ -227,6 +229,15 @@ static UG_S32 _UG_NextCharEx( char** str, UG_COLOR* cur_fc, UG_COLOR def_fc )
                 }
             }
             /* fall through: invalid tag, '{' becomes a literal below */
+        }
+        /* {@s0}/{@s1}/{@s2} -> set shadow mode ('s' case-insensitive) */
+        if (p[1] == '@' && (p[2] == 's' || p[2] == 'S') &&
+            (p[3] == '0' || p[3] == '1' || p[3] == '2') &&
+            p[4] == '}')
+        {
+            *cur_shadow = (UG_U8)(p[3] - '0');
+            *str = (char*)(p + 5);
+            return -1;
         }
         /* not a valid tag: emit '{' as literal, consume 1 byte */
         *str = (char*)(p + 1);
@@ -830,6 +841,7 @@ void UG_PutString( UG_S16 x, UG_S16 y, char* str )
    UG_S16 line_h;
    UG_COLOR cur_fc;
    UG_COLOR def_fc;
+   UG_U8    cur_shadow;
 
    _UG_FontSelect(gui->font);
 
@@ -846,10 +858,11 @@ void UG_PutString( UG_S16 x, UG_S16 y, char* str )
 
    def_fc = gui->fore_color;
    cur_fc = def_fc;
+   cur_shadow = gui->shadow_font;
 
    while ( 1 )
    {
-      UG_S32 ch = _UG_NextCharEx(&str, &cur_fc, def_fc);
+      UG_S32 ch = _UG_NextCharEx(&str, &cur_fc, def_fc, &cur_shadow);
       if (ch == 0) break;
       if (ch < 0) continue;
       chr = (UG_CHAR)ch;
@@ -871,7 +884,7 @@ void UG_PutString( UG_S16 x, UG_S16 y, char* str )
          yp += line_h + gui->char_v_space;
       }
 
-      _UG_PutGlyph(&g, xp, yp, cur_fc, gui->back_color, gui->transparent_font, NULL);
+      _UG_PutGlyph(&g, xp, yp, cur_fc, gui->back_color, gui->transparent_font, cur_shadow, NULL);
 
       xp += g.adv + gui->char_h_space;
    }
@@ -894,6 +907,7 @@ void UG_ConsolePutString( char* str )
    UG_GLYPH g;
    UG_S16 line_h;
    UG_S16 y_draw;
+   UG_U8  cur_shadow;
 
    _UG_FontSelect(gui->font);
    line_h = (UG_S16)gui->currentFont.ascender
@@ -901,10 +915,11 @@ void UG_ConsolePutString( char* str )
    if (line_h <= 0) line_h = 1;
 
    gui->console.cur_fc = gui->console.fore_color;
+   cur_shadow = gui->shadow_font;
 
    while ( 1 )
    {
-      UG_S32 ch = _UG_NextCharEx(&str, &gui->console.cur_fc, gui->console.fore_color);
+      UG_S32 ch = _UG_NextCharEx(&str, &gui->console.cur_fc, gui->console.fore_color, &cur_shadow);
       if (ch == 0) break;
       if (ch < 0) continue;
       chr = (UG_CHAR)ch;
@@ -941,7 +956,7 @@ void UG_ConsolePutString( char* str )
       }
       _UG_PutGlyph(&g, gui->console.x_pos, y_draw,
                    gui->console.cur_fc, gui->console.back_color,
-                   gui->transparent_font, NULL);
+                   gui->transparent_font, cur_shadow, NULL);
    }
    if((gui->driver[DRIVER_FILL_AREA].state & DRIVER_ENABLED))
      ((void*(*)(UG_S16, UG_S16, UG_S16, UG_S16))gui->driver[DRIVER_FILL_AREA].driver)(-1,-1,-1,-1);
@@ -1540,7 +1555,7 @@ static void _UG_BlitGlyph1BPP(const UG_GLYPH *g,
 /* -- Glyph rendering: shadow first, then the body.                                */
 /* -------------------------------------------------------------------------------- */
 static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S32 x, UG_S32 y, UG_COLOR fc, UG_COLOR bc,
-                            UG_U8 trans, UG_AREA* clip )
+                            UG_U8 trans, UG_U8 shadow, UG_AREA* clip )
 {
     if (g->w == 0 || g->h == 0)
         return (UG_S16)g->adv;
@@ -1660,16 +1675,16 @@ static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S32 x, UG_S32 y, UG_COLOR fc, UG_COL
                                      clip, bc);
             }
 
-            if (gui->shadow_font) {
+            if (shadow) {
                 UG_COLOR shadow_color = _UG_BlendColor(fc, bc, 64);
 
-                if (gui->shadow_font == 1) {
+                if (shadow == 1) {
                     /* Drop shadow: single offset (+1, +1) */
                     _UG_BlitGlyph1BPP(g,
                                       draw_x + 1, draw_y + 1,
                                       shadow_color, shadow_color,
                                       1 /* ink only */, clip);
-                } else if (gui->shadow_font == 2) {
+                } else if (shadow == 2) {
                     /* Outline: 8 directions */
                     UG_S32 dx, dy;
                     for (dy = -1; dy <= 1; dy++) {
@@ -1730,7 +1745,7 @@ UG_S16 _UG_PutChar( UG_CHAR chr, UG_S32 x, UG_S32 y, UG_COLOR fc, UG_COLOR bc )
     UG_GLYPH g;
     if (_UG_GetGlyph(chr, &g) != 0)
         return -1;
-    return _UG_PutGlyph(&g, x, y, fc, bc, gui->transparent_font, NULL);
+    return _UG_PutGlyph(&g, x, y, fc, bc, gui->transparent_font, gui->shadow_font, NULL);
 }
 
 #ifdef UGUI_USE_TOUCH
@@ -1893,29 +1908,34 @@ static void _UG_HandleEvents( UG_WINDOW* wnd )
  *   width = Σ(g_i.adv) + (n-1) * h_space
  *
  * Missing glyphs contribute notdef_adv (or max_ink_w if notdef_adv == 0).
- * Inline color tags ({#...}) are skipped and contribute nothing.
+ * Inline color tags ({#...}) and shadow tags ({@s...}) are skipped and
+ * contribute nothing.
  *
- * runs == NULL  -> markup mode, parse {#...} tags.
- * runs != NULL  -> plain text, no tags.
+ * runs == NULL && shadow_runs == NULL  -> markup mode, parse tags.
+ * otherwise                             -> plain text, no tags.
  *
  * This function must consume bytes EXACTLY like _UG_DrawTextLine so that
  * measuring and drawing stay in sync.
  */
 UG_S32 _UG_MeasureTextLine( char** str, UG_FONT* font, UG_S16 h_space,
-                            UG_ColorRun* runs )
+                            UG_ColorRun* runs, UG_ShadowRun* shadow_runs )
 {
     UG_S32 wl = 0;
     UG_S16 first = 1;
     UG_GLYPH g;
     UG_COLOR dummy_fc = 0;
+    UG_U8    dummy_shadow = 0;
+    UG_U8    markup;
     char* s = *str;
 
     _UG_FontSelect(font);
 
+    markup = (runs == NULL && shadow_runs == NULL) ? 1 : 0;
+
     while (1) {
         UG_S32 ch;
-        if (runs == NULL) {
-            ch = _UG_NextCharEx(&s, &dummy_fc, dummy_fc);
+        if (markup) {
+            ch = _UG_NextCharEx(&s, &dummy_fc, dummy_fc, &dummy_shadow);
             if (ch == 0) break;
             if (ch < 0) continue;
         } else {
@@ -1946,12 +1966,18 @@ UG_S32 _UG_MeasureTextLine( char** str, UG_FONT* font, UG_S16 h_space,
  * Reads from *str until '\n' or '\0'. On return, *str points past the
  * terminator.
  *
- * cur_fc : persistent foreground color, updated by inline tags in markup
- *          mode. Caller must keep it across calls so color tags span lines.
- * def_fc : default color, used by {#} and by runs mode.
+ * cur_fc     : persistent foreground color, updated by inline tags in markup
+ *              mode. Caller must keep it across calls so color tags span lines.
+ * def_fc     : default color, used by {#} and by runs mode.
+ * cur_shadow : persistent shadow mode, updated by inline tags in markup mode.
+ *              Caller must keep it across calls so shadow tags span lines.
+ * def_shadow : default shadow mode, used by runs mode (chars not covered by
+ *              any shadow run).
  *
- * runs == NULL  -> markup mode, parse {#...} tags. *char_index unused.
- * runs != NULL  -> plain text. *char_index advanced per char and per '\n'.
+ * runs == NULL && shadow_runs == NULL  -> markup mode, parse tags.
+ * otherwise                             -> plain text. *char_index advanced per
+ *                                          char and per '\n'; drives both run
+ *                                          lookups.
  *
  * Returns the x coordinate after the last drawn character (i.e. where the
  * next character would start).
@@ -1960,15 +1986,18 @@ UG_S32 _UG_MeasureTextLine( char** str, UG_FONT* font, UG_S16 h_space,
  */
 UG_S32 _UG_DrawTextLine( char** str, UG_S32 x, UG_S32 baseline,
                          UG_COLOR* cur_fc, UG_COLOR def_fc,
+                         UG_U8* cur_shadow, UG_U8 def_shadow,
                          UG_COLOR bc, UG_FONT* font,
                          UG_ColorRun* runs, UG_U16 run_count,
+                         UG_ShadowRun* shadow_runs, UG_U16 shadow_run_count,
                          UG_U16* char_index,
                          UG_AREA* clip, UG_S16 h_space )
 {
     UG_GLYPH g;
     UG_S32 xp = x;
-    UG_U8  markup = (runs == NULL) ? 1 : 0;
+    UG_U8  markup = (runs == NULL && shadow_runs == NULL) ? 1 : 0;
     UG_U16 run_cur = 0;
+    UG_U16 shadow_cur = 0;
     char* s = *str;
 
     _UG_FontSelect(font);
@@ -1977,19 +2006,25 @@ UG_S32 _UG_DrawTextLine( char** str, UG_S32 x, UG_S32 baseline,
         while (run_cur < run_count && *char_index >= runs[run_cur].end) {
             run_cur++;
         }
+        while (shadow_cur < shadow_run_count &&
+               *char_index >= shadow_runs[shadow_cur].end) {
+            shadow_cur++;
+        }
     }
 
     while (1) {
         UG_CHAR chr;
         UG_COLOR line_fc;
+        UG_U8    line_shadow;
 
         if (markup) {
-            UG_S32 ch = _UG_NextCharEx(&s, cur_fc, def_fc);
+            UG_S32 ch = _UG_NextCharEx(&s, cur_fc, def_fc, cur_shadow);
             if (ch == 0) break;
             if (ch < 0) continue;
             chr = (UG_CHAR)ch;
             if (chr == '\n') break;
             line_fc = *cur_fc;
+            line_shadow = *cur_shadow;
         } else {
             UG_S32 ch = _UG_NextCharPlain(&s);
             if (ch == 0) break;
@@ -2007,6 +2042,18 @@ UG_S32 _UG_DrawTextLine( char** str, UG_S32 x, UG_S32 baseline,
             } else {
                 line_fc = def_fc;
             }
+
+            while (shadow_cur < shadow_run_count &&
+                   char_index != NULL &&
+                   *char_index >= shadow_runs[shadow_cur].end) {
+                shadow_cur++;
+            }
+            if (shadow_cur < shadow_run_count && char_index != NULL &&
+                *char_index >= shadow_runs[shadow_cur].start) {
+                line_shadow = shadow_runs[shadow_cur].shadow;
+            } else {
+                line_shadow = def_shadow;
+            }
         }
 
         if (_UG_GetGlyph(chr, &g) != 0) {
@@ -2015,7 +2062,7 @@ UG_S32 _UG_DrawTextLine( char** str, UG_S32 x, UG_S32 baseline,
             xp += (UG_S32)adv + h_space;
         } else {
             _UG_PutGlyph(&g, xp, baseline, line_fc, bc,
-                         gui->transparent_font, clip);
+                         gui->transparent_font, line_shadow, clip);
             xp += (UG_S32)g.adv + h_space;
         }
 
@@ -2052,12 +2099,14 @@ void _UG_PutText(UG_TEXT* txt)
    }
 
    /* markup = 1 : str may contain inline tags, parse per frame
-    * markup = 0 : str is plain text, runs[] drives colors (zero parse) */
-   UG_U8  markup = (txt->runs == NULL) ? 1 : 0;
+    * markup = 0 : str is plain text, runs[]/shadow_runs[] drive attributes
+    *              (zero parse) */
+   UG_U8  markup = (txt->runs == NULL && txt->shadow_runs == NULL) ? 1 : 0;
 
-   /* Cross-line persistent state. For the markup path only cur_fc is used;
-    * for the runs path char_index is also used. */
+   /* Cross-line persistent state. For the markup path cur_fc and cur_shadow
+    * are used; for the runs path char_index is also used. */
    UG_COLOR cur_fc = txt->fc;
+   UG_U8    cur_shadow = gui->shadow_font;
 
    /* Optional clip rectangle. */
    UG_AREA clip_buf;
@@ -2073,8 +2122,9 @@ void _UG_PutText(UG_TEXT* txt)
       char* c = txt->str;
       if (markup) {
          UG_COLOR tmp = txt->fc;
+         UG_U8    tmp_shadow = gui->shadow_font;
          while (1) {
-            UG_S32 ch = _UG_NextCharEx(&c, &tmp, txt->fc);
+            UG_S32 ch = _UG_NextCharEx(&c, &tmp, txt->fc, &tmp_shadow);
             if (ch == 0) break;
             if (ch < 0) continue;
             if ((UG_CHAR)ch == '\n') rc++;
@@ -2116,7 +2166,7 @@ void _UG_PutText(UG_TEXT* txt)
       char* c = str;
 
       /* ---- Measure line width (wl) ---- */
-      wl = _UG_MeasureTextLine(&c, txt->font, char_h_space, txt->runs);
+      wl = _UG_MeasureTextLine(&c, txt->font, char_h_space, txt->runs, txt->shadow_runs);
 
       xp = xe - xs + 1;
       xp -= wl;
@@ -2130,8 +2180,11 @@ void _UG_PutText(UG_TEXT* txt)
       xp += xs;
 
       /* ---- Render current line ---- */
-      xp = _UG_DrawTextLine(&str, xp, yp, &cur_fc, txt->fc, txt->bc,
-                            txt->font, txt->runs, txt->run_count,
+      xp = _UG_DrawTextLine(&str, xp, yp, &cur_fc, txt->fc,
+                            &cur_shadow, gui->shadow_font,
+                            txt->bc, txt->font,
+                            txt->runs, txt->run_count,
+                            txt->shadow_runs, txt->shadow_run_count,
                             &char_index, clip, char_h_space);
 
       if (*str == '\0') break;
@@ -2302,20 +2355,29 @@ UG_RESULT UG_DecodeText( const char* in,
                          UG_FONT* font,
                          char* clean, UG_U16 clean_cap,
                          UG_ColorRun* runs, UG_U16 run_cap,
+                         UG_ShadowRun* shadow_runs, UG_U16 shadow_run_cap,
                          char** out_clean, UG_U16* out_clean_len,
-                         UG_ColorRun** out_runs, UG_U16* out_run_count )
+                         UG_ColorRun** out_runs, UG_U16* out_run_count,
+                         UG_ShadowRun** out_shadow_runs, UG_U16* out_shadow_run_count )
 {
     UG_U16 wi = 0;         /* byte write index into clean */
     UG_U16 ci = 0;         /* character index */
-    UG_U16 ri = 0;         /* run count */
+    UG_U16 ri = 0;         /* color run count */
     UG_U16 run_start = 0;
     UG_COLOR cur = 0;
     UG_U8 in_color = 0;
+
+    UG_U16 sri = 0;        /* shadow run count */
+    UG_U16 shadow_start = 0;
+    UG_U8  shadow_cur = 0;
+    UG_U8  in_shadow = 0;
+
     UG_U8 is_old;
 
     if (in == NULL || clean == NULL || clean_cap == 0) return UG_RESULT_FAIL;
     if (out_clean == NULL || out_clean_len == NULL ||
-        out_runs == NULL || out_run_count == NULL) return UG_RESULT_FAIL;
+        out_runs == NULL || out_run_count == NULL ||
+        out_shadow_runs == NULL || out_shadow_run_count == NULL) return UG_RESULT_FAIL;
 
     /* Byte-mode is decided by the target font, NOT by gui->currentFont.
      * This keeps decoding independent of any global font-selection state. */
@@ -2383,6 +2445,26 @@ UG_RESULT UG_DecodeText( const char* in,
                 }
                 /* fall through: invalid tag */
             }
+            /* {@s0}/{@s1}/{@s2} -> shadow mode ('s' case-insensitive) */
+            if (in[1] == '@' &&
+                (in[2] == 's' || in[2] == 'S') &&
+                (in[3] == '0' || in[3] == '1' || in[3] == '2') &&
+                in[4] == '}')
+            {
+                if (in_shadow && shadow_runs != NULL)
+                {
+                    if (sri >= shadow_run_cap) return UG_RESULT_FAIL;
+                    shadow_runs[sri].start  = shadow_start;
+                    shadow_runs[sri].end    = ci;
+                    shadow_runs[sri].shadow = shadow_cur;
+                    sri++;
+                }
+                shadow_cur = (UG_U8)(in[3] - '0');
+                shadow_start = ci;
+                in_shadow = 1;
+                in += 5;
+                continue;
+            }
             /* invalid tag: emit '{' as literal, consume 1 byte */
             if (wi + 1 >= clean_cap) return UG_RESULT_FAIL;
             clean[wi++] = '{';
@@ -2427,13 +2509,24 @@ UG_RESULT UG_DecodeText( const char* in,
         ri++;
     }
 
+    if (in_shadow && shadow_runs != NULL)
+    {
+        if (sri >= shadow_run_cap) return UG_RESULT_FAIL;
+        shadow_runs[sri].start  = shadow_start;
+        shadow_runs[sri].end    = ci;
+        shadow_runs[sri].shadow = shadow_cur;
+        sri++;
+    }
+
     if (wi >= clean_cap) return UG_RESULT_FAIL;
     clean[wi] = 0;
 
-    *out_clean     = clean;
-    *out_clean_len = ci;
-    *out_runs      = runs;
-    *out_run_count = ri;
+    *out_clean          = clean;
+    *out_clean_len      = ci;
+    *out_runs           = runs;
+    *out_run_count      = ri;
+    *out_shadow_runs    = shadow_runs;
+    *out_shadow_run_count = sri;
     return UG_RESULT_OK;
 }
 

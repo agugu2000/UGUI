@@ -137,7 +137,7 @@ static void _UG_ScrollBoxLayout(UG_SCROLLBOX* scb)
     lines = 1;
     while (1) {
         char* c = s;
-        UG_S32 wl = _UG_MeasureTextLine(&c, font, scb->h_space, scb->runs);
+        UG_S32 wl = _UG_MeasureTextLine(&c, font, scb->h_space, scb->runs, scb->shadow_runs);
         if (wl > max_w) max_w = wl;
         if (*c == '\0') break;
         s = c;
@@ -215,6 +215,7 @@ static void _UG_ScrollBoxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
     char* s;
     UG_U16 char_index = 0;
     UG_COLOR cur_fc;
+    UG_U8    cur_shadow;
 
     /* Get object-specific data */
     scb = (UG_SCROLLBOX*)(obj->data);
@@ -330,6 +331,7 @@ static void _UG_ScrollBoxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
 
         s = scb->str;
         cur_fc = scb->fc;
+        cur_shadow = UG_GetGUI()->shadow_font;
         while (1) {
             UG_S32 xp = scb->view.xs
                       + scb->offset_x
@@ -341,8 +343,11 @@ static void _UG_ScrollBoxUpdate(UG_WINDOW* wnd, UG_OBJECT* obj)
              * This is standard viewport culling. */
             if (yp - asc > clip.ye) break;
 
-            _UG_DrawTextLine(&s, xp, yp, &cur_fc, scb->fc, scb->bc,
-                             scb->font, scb->runs, scb->run_count,
+            _UG_DrawTextLine(&s, xp, yp, &cur_fc, scb->fc,
+                             &cur_shadow, UG_GetGUI()->shadow_font,
+                             scb->bc, scb->font,
+                             scb->runs, scb->run_count,
+                             scb->shadow_runs, scb->shadow_run_count,
                              &char_index, &clip, scb->h_space);
 
             if (*s == '\0') break;
@@ -380,6 +385,8 @@ UG_RESULT UG_ScrollBoxCreate( UG_WINDOW* wnd, UG_SCROLLBOX* scb, UG_U8 id,
     scb->v_space = 0;
     scb->runs = NULL;
     scb->run_count = 0;
+    scb->shadow_runs = NULL;
+    scb->shadow_run_count = 0;
     scb->hbar_mode = UG_SCROLLBAR_AUTO;
     scb->vbar_mode = UG_SCROLLBAR_AUTO;
     /* Scrollbar thickness: 1.5% of the corresponding viewport dimension,
@@ -460,9 +467,12 @@ UG_RESULT UG_ScrollBoxSetText( UG_WINDOW* wnd, UG_U8 id, char* str )
     scb = (UG_SCROLLBOX*)(obj->data);
     scb->str = str;
     /* Setting new text invalidates any previously-set runs. Caller must
-     * call UG_ScrollBoxSetRuns again if runs are still wanted. */
+     * call UG_ScrollBoxSetRuns / UG_ScrollBoxSetShadowRuns again if runs
+     * are still wanted. */
     scb->runs = NULL;
     scb->run_count = 0;
+    scb->shadow_runs = NULL;
+    scb->shadow_run_count = 0;
     scb->layout_dirty = 1;
     obj->state |= OBJ_STATE_UPDATE | OBJ_STATE_REDRAW;
     return UG_RESULT_OK;
@@ -480,6 +490,21 @@ UG_RESULT UG_ScrollBoxSetRuns( UG_WINDOW* wnd, UG_U8 id,
     /* Runs do not change layout (they are pure color info), so no
      * layout_dirty. But the string is now interpreted as plain text,
      * so we must redraw. */
+    obj->state |= OBJ_STATE_UPDATE | OBJ_STATE_REDRAW;
+    return UG_RESULT_OK;
+}
+
+UG_RESULT UG_ScrollBoxSetShadowRuns( UG_WINDOW* wnd, UG_U8 id,
+                                     UG_ShadowRun* runs, UG_U16 run_count )
+{
+    UG_OBJECT* obj = _UG_SearchObject( wnd, OBJ_TYPE_SCROLLBOX, id );
+    UG_SCROLLBOX* scb;
+    if ( obj == NULL ) return UG_RESULT_FAIL;
+    scb = (UG_SCROLLBOX*)(obj->data);
+    scb->shadow_runs = runs;
+    scb->shadow_run_count = run_count;
+    /* Shadow runs do not change layout, but the string is now interpreted
+     * as plain text, so we must redraw. */
     obj->state |= OBJ_STATE_UPDATE | OBJ_STATE_REDRAW;
     return UG_RESULT_OK;
 }
